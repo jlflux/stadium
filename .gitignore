@@ -1,0 +1,29 @@
+# ===========================================================
+#  Waldrop Stadium Visiting Team Guide — git ignore rules
+# ===========================================================
+
+# --- Secrets: NEVER commit (this repo is public) ---
+# config.php holds the admin password. Use config.sample.php as the
+# template: copy it to config.php on the server and set the password.
+config.php
+config.local.php
+
+# --- Uploaded images & runtime media ---
+# The uploads folder is tracked (so it exists on a fresh clone) but its
+# contents are not — logos, hero/parking images, and gallery photos live
+# on the server and are managed through the admin panel.
+uploads/*
+!uploads/.gitkeep
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# --- Logs / temp ---
+*.log
+*.tmp

@@ -1,0 +1,9 @@
+# Allow larger image uploads (the admin panel shrinks them after upload).
+# Most shared hosts (including Hostinger) honor these values.
+php_value upload_max_filesize 16M
+php_value post_max_size 20M
+php_value memory_limit 256M
+
+# If your host runs PHP as FastCGI/FPM and ignores the lines above,
+# they'll be quietly skipped — that's fine, the browser also shrinks
+# large images before uploading so they arrive well under the limit.

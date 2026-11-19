@@ -1,0 +1,11 @@
+# Block direct web access to the raw content file.
+# The site reads it in PHP; nobody needs to fetch it over HTTP.
+<FilesMatch "\.json$">
+  Require all denied
+</FilesMatch>
+
+# Fallback for older Apache
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>
