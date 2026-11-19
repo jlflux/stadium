@@ -172,6 +172,43 @@ function tel_href(string $phone): string {
     return 'tel:' . preg_replace('/\D+/', '', $phone);
 }
 
+// ------------------------------------------------------------
+//  Per-school brand colors
+// ------------------------------------------------------------
+function valid_hex($s): bool { return (bool)preg_match('/^#?[0-9a-fA-F]{6}$/', (string)$s); }
+function norm_hex($s, string $fallback): string {
+    $s = trim((string)$s);
+    return valid_hex($s) ? ('#' . strtoupper(ltrim($s, '#'))) : $fallback;
+}
+function _hex_rgb(string $hex): array {
+    $hex = ltrim($hex, '#');
+    return [hexdec(substr($hex, 0, 2)), hexdec(substr($hex, 2, 2)), hexdec(substr($hex, 4, 2))];
+}
+function _rgb_hex($r, $g, $b): string {
+    $c = fn($v) => max(0, min(255, (int)round($v)));
+    return sprintf('#%02X%02X%02X', $c($r), $c($g), $c($b));
+}
+// amount < 0 darkens, > 0 lightens (toward white), range roughly -1..1
+function shade(string $hex, float $amount): string {
+    [$r, $g, $b] = _hex_rgb($hex);
+    if ($amount < 0) { $f = 1 + $amount; return _rgb_hex($r * $f, $g * $f, $b * $f); }
+    return _rgb_hex($r + (255 - $r) * $amount, $g + (255 - $g) * $amount, $b + (255 - $b) * $amount);
+}
+
+// The four CSS color values a page renders with, from a school's theme.
+// The canonical Homewood palette (navy + red) always renders its exact
+// original shades — whether its theme is unset or explicitly set — so it
+// never drifts. Any other palette derives its deep/bright shades.
+function theme_colors(array $c): array {
+    $t = is_array($c['theme'] ?? null) ? $c['theme'] : [];
+    $primary = norm_hex($t['primary'] ?? '', '#101E3C');  // Homewood navy fallback
+    $accent  = norm_hex($t['accent'] ?? '', '#B22234');   // Homewood red fallback
+    if (strcasecmp($primary, '#101E3C') === 0 && strcasecmp($accent, '#B22234') === 0) {
+        return ['navy' => '#101E3C', 'navy_deep' => '#0A1428', 'red' => '#B22234', 'red_bright' => '#E04553'];
+    }
+    return ['navy' => $primary, 'navy_deep' => shade($primary, -0.34), 'red' => $accent, 'red_bright' => shade($accent, 0.20)];
+}
+
 // Lines <-> array helpers for the admin textareas
 function lines_to_array(string $text): array {
     $lines = preg_split('/\r\n|\r|\n/', $text);
@@ -308,6 +345,12 @@ function apply_content_post(array $P, array $c): array {
         'office_phone'  => trim($P['f_phone'] ?? ''),
         'contact_name'  => trim($P['f_name'] ?? ''),
         'contact_email' => trim($P['f_email'] ?? ''),
+    ];
+
+    // Brand colors (two per school; deep/bright shades are derived at render)
+    $c['theme'] = [
+        'primary' => norm_hex($P['theme_primary'] ?? '', '#101E3C'),
+        'accent'  => norm_hex($P['theme_accent'] ?? '', '#B22234'),
     ];
     return $c;
 }

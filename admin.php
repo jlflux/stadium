@@ -337,6 +337,9 @@ textarea{min-height:84px;resize:vertical}
 .order-btns button{width:34px;height:32px;border:1px solid #CCC8BB;background:#fff;border-radius:7px;font-size:15px;cursor:pointer;color:var(--navy)}
 .order-btns button:hover{background:#EDEAE2}
 code{background:#EDEAE2;padding:1px 6px;border-radius:4px;font-size:12.5px}
+.colorrow{display:flex;gap:10px;align-items:center}
+.colorrow input[type=color]{width:46px;height:40px;border:1px solid #CCC8BB;border-radius:8px;background:#fff;padding:2px;cursor:pointer;flex-shrink:0}
+.colorrow input[type=text]{flex:1}
 .imgslots{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
 .imgslot{border:1px solid #EFECE2;border-radius:10px;padding:12px;background:#FCFBF8;text-align:center}
 .imgslot img{max-width:100%;height:110px;object-fit:contain;display:block;margin:0 auto 8px;background:#fff;border-radius:6px}
@@ -606,6 +609,28 @@ else:
       <label>Hero subtitle</label><textarea name="hero_sub"><?= h($c['site']['hero_sub'] ?? '') ?></textarea>
     </fieldset>
 
+    <?php $tp = $c['theme']['primary'] ?? '#101E3C'; $ta = $c['theme']['accent'] ?? '#B22234'; ?>
+    <fieldset>
+      <legend>Brand Colors</legend>
+      <p class="hint" style="margin:-4px 0 14px">Two colors drive the whole page — a dark base and an accent. The darker header/footer shades and hover states are generated automatically. (Homewood's navy &amp; red render exactly as before.)</p>
+      <div class="grid2">
+        <div>
+          <label>Primary (dark base)</label>
+          <div class="colorrow">
+            <input type="color" class="swatch" data-for="tp" value="<?= h(strtolower($tp)) ?>">
+            <input type="text" name="theme_primary" id="tp" value="<?= h($tp) ?>" placeholder="#101E3C">
+          </div>
+        </div>
+        <div>
+          <label>Accent</label>
+          <div class="colorrow">
+            <input type="color" class="swatch" data-for="ta" value="<?= h(strtolower($ta)) ?>">
+            <input type="text" name="theme_accent" id="ta" value="<?= h($ta) ?>" placeholder="#B22234">
+          </div>
+        </div>
+      </div>
+    </fieldset>
+
     <fieldset>
       <legend>Gameday Clock</legend>
       <label>Strip label</label><input type="text" name="tl_label" value="<?= h($c['timeline']['label'] ?? '') ?>">
@@ -831,6 +856,16 @@ function addContact(){
   wrap.appendChild(div);
   div.querySelector('input').focus();
 }
+
+/* brand-color swatch <-> hex text sync */
+(function(){
+  document.querySelectorAll('.colorrow .swatch').forEach(function(sw){
+    var txt = document.getElementById(sw.dataset.for);
+    if(!txt) return;
+    sw.addEventListener('input', function(){ txt.value = sw.value.toUpperCase(); });
+    txt.addEventListener('input', function(){ if(/^#?[0-9a-fA-F]{6}$/.test(txt.value.trim())) sw.value = '#' + txt.value.trim().replace(/^#/,'').toLowerCase(); });
+  });
+})();
 
 /* live slug preview on the create-school form */
 (function(){

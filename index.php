@@ -361,6 +361,7 @@ $site = $c['site'] ?? []; $tl = $c['timeline'] ?? [];
 $foot = $c['footer'] ?? []; $school = $c['school'] ?? [];
 $org = org_name($c);
 $v = @filemtime(school_data_file($slug)) ?: time();
+$TC = theme_colors($c);   // per-school brand colors
 $order = $c['section_order'] ?? ['welcome','contacts','parking','policies','media','tickets','directions','school','gallery'];
 
 // Nav: only sections that actually render.
@@ -382,7 +383,7 @@ $has_hero   = up_has('hero.jpg');
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-:root{--navy:#101E3C;--navy-deep:#0A1428;--red:#B22234;--red-bright:#E04553;--chalk:#F7F5F0;--line:#8A93A6;--card:#FFFFFF;--ink:#1B2437;--max:1080px}
+:root{--navy:<?= $TC['navy'] ?>;--navy-deep:<?= $TC['navy_deep'] ?>;--red:<?= $TC['red'] ?>;--red-bright:<?= $TC['red_bright'] ?>;--chalk:#F7F5F0;--line:#8A93A6;--card:#FFFFFF;--ink:#1B2437;--max:1080px}
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:76px}
 @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}}
@@ -661,7 +662,7 @@ function render_shell_head(string $title): string {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-:root{--navy:#101E3C;--navy-deep:#0A1428;--red:#B22234;--red-bright:#E04553;--chalk:#F7F5F0;--card:#fff;--ink:#1B2437;--max:1080px}
+:root{--navy:#0F1A24;--navy-deep:#0A1218;--red:#14B8A6;--red-bright:#3EC5B6;--chalk:#F7F5F0;--card:#fff;--ink:#1B2437;--max:1080px}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',system-ui,sans-serif;background:var(--chalk);color:var(--ink);line-height:1.6}
 .display{font-weight:900;text-transform:uppercase;letter-spacing:.02em}
