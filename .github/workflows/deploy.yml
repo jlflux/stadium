@@ -1,0 +1,37 @@
+name: Deploy to Hostinger
+
+# Runs on every push to main (and can be run by hand from the Actions tab).
+# The job only runs once you flip the repo variable DEPLOY_ENABLED to "true",
+# so adding this file does not trigger a deploy until you're ready.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: deploy-${{ github.ref }}
+
+jobs:
+  deploy:
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy code over FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server:    ${{ secrets.FTP_HOST }}
+          username:  ${{ secrets.FTP_USERNAME }}
+          password:  ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          protocol:  ftps
+          # Only CODE is deployed. Everything below is live, server-owned data
+          # that the admin writes to — it is never uploaded or overwritten:
+          exclude: |
+            **/.git*
+            **/.git*/**
+            .github/**
+            data/users.json
+            data/schools/**
+            uploads/**
