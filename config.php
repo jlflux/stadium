@@ -1,48 +1,164 @@
 <?php
 // ============================================================
-//  Waldrop Stadium Visiting Team Guide — configuration
+//  Gameday Guides — multi-school platform configuration
 // ============================================================
-
-// CHANGE THIS before going live. This is the password for /admin.php
-define('ADMIN_PASSWORD', 'change-me-before-going-live');
-
-define('DATA_FILE',   __DIR__ . '/data/content.json');
-define('UPLOAD_DIR',  __DIR__ . '/uploads');
-define('UPLOAD_URL',  'uploads');
-
+//
+//  This file holds paths, platform settings, and shared helpers.
+//  There are NO passwords here anymore — accounts live in
+//  data/users.json (bcrypt-hashed) and are managed from the admin.
 // ------------------------------------------------------------
 
-function load_content(): array {
-    $json = @file_get_contents(DATA_FILE);
+// ---- Platform settings -------------------------------------
+define('PLATFORM_NAME', 'Gameday Guides');
+// Subtle growth link shown at the bottom of every public school page.
+define('GROWTH_TEXT', 'Want a Gameday Guide like this for your school?');
+define('GROWTH_URL',  '');   // blank => link to the landing page
+
+// ---- Paths -------------------------------------------------
+define('DATA_DIR',        __DIR__ . '/data');
+define('SCHOOLS_DIR',     DATA_DIR . '/schools');
+define('USERS_FILE',      DATA_DIR . '/users.json');
+define('UPLOAD_BASE_DIR', __DIR__ . '/uploads');
+define('DEFAULT_TEMPLATE', __DIR__ . '/default.php');
+
+// ---- Base URL (so the app works at a domain root or in a subfolder) ----
+$__script = $_SERVER['SCRIPT_NAME'] ?? '';
+$__dir    = rtrim(str_replace('\\', '/', dirname($__script)), '/');
+if ($__dir === '.' || $__dir === '/') $__dir = '';
+define('BASE_URL', $__dir);                 // '' at root, '/sub' in a subfolder
+
+// Reserved words that can never be a school slug (they are real paths/pages).
+const RESERVED_SLUGS = ['admin', 'data', 'uploads', 'index', 'default',
+                        'config', 'assets', 'api', 'css', 'js', 'img', 'static'];
+
+// ------------------------------------------------------------
+//  Slugs
+// ------------------------------------------------------------
+function valid_slug($slug): bool {
+    $slug = (string)$slug;
+    if (in_array($slug, RESERVED_SLUGS, true)) return false;
+    // lowercase letters/digits, hyphens allowed inside, 1–40 chars
+    return (bool)preg_match('/^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/', $slug);
+}
+
+function slugify($s): string {
+    $s = strtolower(trim((string)$s));
+    $s = preg_replace('/[^a-z0-9]+/', '-', $s);
+    return trim($s, '-');
+}
+
+// ------------------------------------------------------------
+//  Per-school paths
+// ------------------------------------------------------------
+function school_data_file(string $slug): string { return SCHOOLS_DIR . '/' . $slug . '.json'; }
+function school_upload_dir(string $slug): string { return UPLOAD_BASE_DIR . '/' . $slug; }
+function school_upload_url(string $slug): string { return BASE_URL . '/uploads/' . $slug; }
+function school_exists(string $slug): bool { return valid_slug($slug) && is_file(school_data_file($slug)); }
+function school_url(string $slug): string { return (BASE_URL === '' ? '' : BASE_URL) . '/' . $slug; }
+
+// ------------------------------------------------------------
+//  Content load / save (per school)
+// ------------------------------------------------------------
+function load_content(string $slug): array {
+    $json = @file_get_contents(school_data_file($slug));
     $data = $json ? json_decode($json, true) : null;
     return is_array($data) ? $data : [];
 }
 
-function save_content(array $data): bool {
+function save_content(string $slug, array $data): bool {
+    if (!is_dir(SCHOOLS_DIR)) @mkdir(SCHOOLS_DIR, 0775, true);
     $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    return file_put_contents(DATA_FILE, $json, LOCK_EX) !== false;
+    return file_put_contents(school_data_file($slug), $json, LOCK_EX) !== false;
 }
 
+// Blank-school template (default.php returns an array). Creating a school
+// clones this into data/schools/{slug}.json.
+function default_template(): array {
+    $tmpl = @include DEFAULT_TEMPLATE;
+    return is_array($tmpl) ? $tmpl : [];
+}
+
+// List every school: [slug => site array], sorted by display name.
+function list_schools(): array {
+    $out = [];
+    foreach (glob(SCHOOLS_DIR . '/*.json') ?: [] as $f) {
+        $slug = basename($f, '.json');
+        if (!valid_slug($slug)) continue;
+        $c = load_content($slug);
+        $out[$slug] = $c['site'] ?? [];
+    }
+    uasort($out, fn($a, $b) => strcasecmp($a['school_name'] ?? '', $b['school_name'] ?? ''));
+    return $out;
+}
+
+// ------------------------------------------------------------
+//  Users / accounts
+// ------------------------------------------------------------
+//  users.json shape:
+//  { "users": [
+//      {"username":"master","password_hash":"...","role":"master","slug":null},
+//      {"username":"homewood","password_hash":"...","role":"school","slug":"homewood"}
+//  ]}
+function load_users(): array {
+    $json = @file_get_contents(USERS_FILE);
+    $data = $json ? json_decode($json, true) : null;
+    if (!is_array($data) || !isset($data['users']) || !is_array($data['users'])) return ['users' => []];
+    return $data;
+}
+
+function save_users(array $u): bool {
+    if (!is_dir(DATA_DIR)) @mkdir(DATA_DIR, 0775, true);
+    $json = json_encode($u, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    $ok = file_put_contents(USERS_FILE, $json, LOCK_EX) !== false;
+    @chmod(USERS_FILE, 0640);
+    return $ok;
+}
+
+function find_user(string $username): ?array {
+    foreach (load_users()['users'] as $u) {
+        if (strcasecmp($u['username'] ?? '', $username) === 0) return $u;
+    }
+    return null;
+}
+
+// Verify a login. Returns the user record on success, null on failure.
+function verify_login(string $username, string $password): ?array {
+    $u = find_user($username);
+    if (!$u || empty($u['password_hash'])) return null;
+    if (!password_verify($password, $u['password_hash'])) return null;
+    return $u;
+}
+
+// Add or replace a user record (matched by username). Returns updated users array.
+function upsert_user(array $users, array $rec): array {
+    $found = false;
+    foreach ($users['users'] as &$u) {
+        if (strcasecmp($u['username'] ?? '', $rec['username']) === 0) { $u = $rec; $found = true; break; }
+    }
+    unset($u);
+    if (!$found) $users['users'][] = $rec;
+    return $users;
+}
+
+// ------------------------------------------------------------
+//  Output helpers
+// ------------------------------------------------------------
 function h($s): string {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
 
 // Allow a useful whitelist of HTML (bold, italics, links, lists, breaks…)
-// while stripping anything dangerous. Admin content is trusted (password
-// protected) but we still block scripts, event handlers, and javascript: URLs
-// so a leaked password can't turn into stored XSS.
+// while stripping anything dangerous. Admin content is trusted (login
+// protected) but we still block scripts, event handlers, and javascript:
+// URLs so a leaked password can't turn into stored XSS.
 function h_rich($s): string {
     $s = (string)$s;
-    // keep only these tags; strip_tags removes everything else
     $allowed = '<strong><b><em><i><u><s><br><a><span><small><sup><sub><ul><ol><li><p><mark>';
     $s = strip_tags($s, $allowed);
-    // remove on* event handlers (onclick, onload, …)
     $s = preg_replace('/\son\w+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $s);
-    // neutralize javascript:/data:/vbscript: in href or src (quoted or bare)
     $s = preg_replace('/\b(href|src)\s*=\s*"\s*(?:javascript|data|vbscript):[^"]*"/i', '$1="#"', $s);
     $s = preg_replace("/\b(href|src)\s*=\s*'\s*(?:javascript|data|vbscript):[^']*'/i", '$1="#"', $s);
     $s = preg_replace('/\b(href|src)\s*=\s*(?:javascript|data|vbscript):[^\s>]*/i', '$1="#"', $s);
-    // add target/rel to links that don't set them, so outbound links open safely in a new tab
     $s = preg_replace_callback('/<a\b([^>]*)>/i', function ($m) {
         $attrs = $m[1];
         if (stripos($attrs, 'target=') === false) $attrs .= ' target="_blank"';
@@ -66,11 +182,14 @@ function array_to_lines(array $arr): string {
     return implode("\n", $arr);
 }
 
-// Build the content array from posted admin-form fields. Pure transformation
-// (no I/O) so it can be unit-tested independently of the HTTP layer.
+// ------------------------------------------------------------
+//  Build the content array from posted admin-form fields.
+//  Pure transformation (no I/O) so it can be unit-tested.
+// ------------------------------------------------------------
 function apply_content_post(array $P, array $c): array {
     $c['site'] = [
         'school_name'  => trim($P['school_name'] ?? ''),
+        'org_name'     => trim($P['org_name'] ?? ''),
         'tagline'      => trim($P['tagline'] ?? ''),
         'eyebrow'      => trim($P['eyebrow'] ?? ''),
         'hero_top'     => trim($P['hero_top'] ?? ''),
@@ -136,7 +255,6 @@ function apply_content_post(array $P, array $c): array {
         'cta' => trim($P['tix_cta'] ?? ''),
     ];
 
-    // School website section
     $c['school'] = [
         'nav_label'    => trim($P['sch_nav'] ?? ''),
         'url'          => trim($P['sch_url'] ?? ''),
@@ -146,7 +264,6 @@ function apply_content_post(array $P, array $c): array {
         'button_label' => trim($P['sch_button'] ?? ''),
     ];
 
-    // Media & Broadcast section
     $c['media']['kicker']  = trim($P['med_kicker'] ?? '');
     $c['media']['heading'] = trim($P['med_heading'] ?? '');
     $c['media']['lede']    = trim($P['med_lede'] ?? '');
@@ -168,11 +285,10 @@ function apply_content_post(array $P, array $c): array {
     }
     $c['media']['broadcast_links'] = $blinks;
 
-    // Section order (from the drag-and-drop reorder control)
     $known = ['welcome','contacts','parking','policies','media','tickets','directions','school','gallery'];
     $submitted = array_filter(array_map('trim', explode(',', $P['section_order'] ?? '')));
-    $ordered = array_values(array_intersect($submitted, $known));   // keep only known ids, in submitted order
-    foreach ($known as $k) if (!in_array($k, $ordered, true)) $ordered[] = $k; // append any missing
+    $ordered = array_values(array_intersect($submitted, $known));
+    foreach ($known as $k) if (!in_array($k, $ordered, true)) $ordered[] = $k;
     if ($ordered) $c['section_order'] = $ordered;
 
     $c['directions']['lede'] = trim($P['dir_lede'] ?? '');
@@ -194,12 +310,4 @@ function apply_content_post(array $P, array $c): array {
         'contact_email' => trim($P['f_email'] ?? ''),
     ];
     return $c;
-}
-
-function require_admin(): void {
-    if (session_status() !== PHP_SESSION_ACTIVE) session_start();
-    if (empty($_SESSION['is_admin'])) {
-        header('Location: admin.php');
-        exit;
-    }
 }

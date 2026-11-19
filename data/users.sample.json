@@ -1,0 +1,16 @@
+{
+    "users": [
+        {
+            "username": "master",
+            "password_hash": "REPLACE_WITH_password_hash_OUTPUT",
+            "role": "master",
+            "slug": null
+        },
+        {
+            "username": "homewood",
+            "password_hash": "REPLACE_WITH_password_hash_OUTPUT",
+            "role": "school",
+            "slug": "homewood"
+        }
+    ]
+}

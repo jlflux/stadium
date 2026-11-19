@@ -1,9 +1,49 @@
 <?php
+// ============================================================
+//  index.php — front controller
+//    /              -> landing / school directory
+//    /{school-slug} -> that school's visiting-team guide
+// ============================================================
 require __DIR__ . '/config.php';
-$c = load_content();
-$site = $c['site'] ?? []; $tl = $c['timeline'] ?? [];
-$foot = $c['footer'] ?? []; $school = $c['school'] ?? [];
-$v = @filemtime(DATA_FILE) ?: time(); // cache-buster for images
+
+// ---- image helpers (use globals set once we know the school) ----
+function up_url(string $file): string { return ($GLOBALS['UPL_URL'] ?? 'uploads') . '/' . rawurlencode($file); }
+function up_has(string $file): bool   { return isset($GLOBALS['UPL_DIR']) && is_file($GLOBALS['UPL_DIR'] . '/' . $file); }
+function org_name(array $c): string {
+    $o = trim($c['site']['org_name'] ?? '');
+    return $o !== '' ? $o : trim($c['site']['school_name'] ?? '');
+}
+
+// Is a section worth rendering? (blank sections are hidden so new/partial
+// schools look intentional, and the nav only lists what actually shows.)
+function section_nonempty(string $sid, array $c): bool {
+    switch ($sid) {
+        case 'welcome':
+            $w = $c['welcome'] ?? [];
+            return trim(($w['heading'] ?? '') . ($w['p1'] ?? '') . ($w['p2'] ?? '') . ($w['quote'] ?? '')) !== '';
+        case 'contacts':
+            return !empty($c['contacts']) || !empty($c['admin_team']);
+        case 'parking':
+            $p = $c['parking'] ?? [];
+            return trim($p['lede'] ?? '') !== '' || !empty($p['cards']) || up_has('parking.jpg');
+        case 'policies':
+            return !empty($c['policies']);
+        case 'media':
+            $m = $c['media'] ?? [];
+            return trim($m['lede'] ?? '') !== '' || !empty($m['cards']) || !empty($m['broadcast_links']);
+        case 'tickets':
+            $t = $c['tickets'] ?? [];
+            return trim($t['price'] ?? '') !== '' || !empty($t['items']);
+        case 'directions':
+            $d = $c['directions'] ?? [];
+            return !empty($d['routes']) || trim($d['map_query'] ?? '') !== '';
+        case 'school':
+            return trim($c['school']['url'] ?? '') !== '';
+        case 'gallery':
+            return !empty($c['gallery']['photos']);
+    }
+    return true;
+}
 
 // ---- nav labels for reorderable sections (welcome has no nav entry) ----
 $NAV_LABELS = [
@@ -15,9 +55,10 @@ $NAV_LABELS = [
     'directions' => 'Directions',
     'gallery'    => 'Photos',
 ];
-$order = $c['section_order'] ?? ['welcome','contacts','parking','policies','media','tickets','directions','school','gallery'];
 
-// ---- section renderers ----
+// ============================================================
+//  Section renderers
+// ============================================================
 function sec_welcome($c, $v, $alt) {
     $w = $c['welcome'] ?? [];
     ob_start(); ?>
@@ -28,11 +69,11 @@ function sec_welcome($c, $v, $alt) {
             <div class="kicker"><?= h_rich($w['kicker'] ?? '') ?></div>
             <h2><?= h_rich($w['heading'] ?? '') ?></h2>
             <p class="lede"><?= h_rich($w['p1'] ?? '') ?></p>
-            <p style="color:#4A5568;max-width:680px"><?= h_rich($w['p2'] ?? '') ?></p>
+            <?php if (!empty($w['p2'])): ?><p style="color:#4A5568;max-width:680px"><?= h_rich($w['p2']) ?></p><?php endif; ?>
           </div>
           <div class="welcome-note">
-            <img src="<?= UPLOAD_URL ?>/pat.png?v=<?= $v ?>" alt="Patriot Pat" style="width:130px;display:block;margin:0 auto 16px">
-            <p><em><?= h_rich($w['quote'] ?? '') ?></em></p>
+            <?php if (up_has('pat.png')): ?><img src="<?= h(up_url('pat.png')) ?>?v=<?= $v ?>" alt="" style="width:130px;display:block;margin:0 auto 16px"><?php endif; ?>
+            <?php if (!empty($w['quote'])): ?><p><em><?= h_rich($w['quote']) ?></em></p><?php endif; ?>
             <div class="sig">
               <strong><?= h_rich($w['sig_name'] ?? '') ?></strong>
               <span><?= h_rich($w['sig_title'] ?? '') ?></span>
@@ -45,6 +86,7 @@ function sec_welcome($c, $v, $alt) {
 }
 
 function sec_contacts($c, $v, $alt) {
+    $org = org_name($c);
     ob_start(); ?>
     <section id="contacts" class="<?= $alt ?>">
       <div class="section-inner">
@@ -67,7 +109,7 @@ function sec_contacts($c, $v, $alt) {
         </ul>
         <?php if (!empty($c['admin_team'])): ?>
         <div class="admin-list">
-          <h3>Homewood High School Administrative Team</h3>
+          <h3><?= h($org !== '' ? $org . ' Administrative Team' : 'Administrative Team') ?></h3>
           <ul>
             <?php foreach ($c['admin_team'] as $line): ?><li><?= h_rich($line) ?></li><?php endforeach; ?>
           </ul>
@@ -85,9 +127,10 @@ function sec_parking($c, $v, $alt) {
       <div class="section-inner">
         <div class="kicker">Arrival &amp; Parking</div>
         <h2>Getting In</h2>
-        <p class="lede"><?= h_rich($park['lede'] ?? '') ?></p>
+        <?php if (!empty($park['lede'])): ?><p class="lede"><?= h_rich($park['lede']) ?></p><?php endif; ?>
+        <?php if (!empty($park['cards'])): ?>
         <div class="parking-grid">
-          <?php foreach (($park['cards'] ?? []) as $card): ?>
+          <?php foreach ($park['cards'] as $card): ?>
           <div class="p-card">
             <div class="p-head"><span class="dot"></span><?= h_rich($card['title'] ?? '') ?></div>
             <ul>
@@ -96,10 +139,13 @@ function sec_parking($c, $v, $alt) {
           </div>
           <?php endforeach; ?>
         </div>
+        <?php endif; ?>
+        <?php if (up_has('parking.jpg')): ?>
         <figure class="map-figure">
-          <img src="<?= UPLOAD_URL ?>/parking.jpg?v=<?= $v ?>" alt="Aerial diagram of Waldrop Stadium showing gameday parking locations">
-          <figcaption><?= h_rich($park['caption'] ?? '') ?></figcaption>
+          <img src="<?= h(up_url('parking.jpg')) ?>?v=<?= $v ?>" alt="Gameday parking map">
+          <?php if (!empty($park['caption'])): ?><figcaption><?= h_rich($park['caption']) ?></figcaption><?php endif; ?>
         </figure>
+        <?php endif; ?>
       </div>
     </section>
     <?php return ob_get_clean();
@@ -196,12 +242,13 @@ function sec_tickets($c, $v, $alt) {
 
 function sec_directions($c, $v, $alt) {
     $dir = $c['directions'] ?? [];
+    $stadium = trim($c['site']['hero_em'] ?? '') ?: 'the Stadium';
     ob_start(); ?>
     <section id="directions" class="<?= $alt ?>">
       <div class="section-inner">
         <div class="kicker">Finding Us</div>
-        <h2>Directions to Waldrop Stadium</h2>
-        <p class="lede"><?= h_rich($dir['lede'] ?? '') ?></p>
+        <h2>Directions to <?= h($stadium) ?></h2>
+        <?php if (!empty($dir['lede'])): ?><p class="lede"><?= h_rich($dir['lede']) ?></p><?php endif; ?>
         <div class="dir-grid">
           <div class="dir-col">
             <?php foreach (($dir['routes'] ?? []) as $route): ?>
@@ -213,16 +260,18 @@ function sec_directions($c, $v, $alt) {
             </div>
             <?php endforeach; ?>
           </div>
+          <?php if (trim($dir['map_query'] ?? '') !== ''): ?>
           <div class="gmap">
             <iframe
-              title="Map of Waldrop Stadium"
-              src="https://www.google.com/maps?q=<?= rawurlencode($dir['map_query'] ?? '') ?>&output=embed"
+              title="Map of <?= h($stadium) ?>"
+              src="https://www.google.com/maps?q=<?= rawurlencode($dir['map_query']) ?>&output=embed"
               loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
             <div class="gmap-foot">
               <span><?= h_rich($dir['map_label'] ?? '') ?></span>
-              <a href="https://www.google.com/maps/dir/?api=1&destination=<?= rawurlencode($dir['map_query'] ?? '') ?>" target="_blank" rel="noopener">Get Directions →</a>
+              <a href="https://www.google.com/maps/dir/?api=1&destination=<?= rawurlencode($dir['map_query']) ?>" target="_blank" rel="noopener">Get Directions →</a>
             </div>
           </div>
+          <?php endif; ?>
         </div>
       </div>
     </section>
@@ -236,14 +285,14 @@ function sec_school($c, $v, $alt) {
     <section id="school" class="<?= $alt ?>">
       <div class="section-inner">
         <div class="school-band">
-          <img src="<?= UPLOAD_URL ?>/logo.png?v=<?= $v ?>" alt="" class="school-logo">
+          <?php if (up_has('logo.png')): ?><img src="<?= h(up_url('logo.png')) ?>?v=<?= $v ?>" alt="" class="school-logo"><?php endif; ?>
           <div class="school-text">
-            <div class="kicker" style="color:#fff;opacity:.85"><?= h_rich($s['kicker'] ?? 'Homewood Athletics') ?></div>
+            <div class="kicker" style="color:#fff;opacity:.85"><?= h_rich($s['kicker'] ?? 'Athletics') ?></div>
             <h2 style="color:#fff"><?= h_rich($s['heading'] ?? '') ?></h2>
             <p><?= h_rich($s['blurb'] ?? '') ?></p>
           </div>
           <?php if ($url !== ''): ?>
-          <a class="school-btn" href="<?= h($url) ?>" target="_blank" rel="noopener"><?= h_rich($s['button_label'] ?? $url) ?> →</a>
+          <a class="school-btn" href="<?= h($url) ?>" target="_blank" rel="noopener"><?= h_rich($s['button_label'] ?: $url) ?> →</a>
           <?php endif; ?>
         </div>
       </div>
@@ -253,15 +302,16 @@ function sec_school($c, $v, $alt) {
 
 function sec_gallery($c, $v, $alt) {
     $gal = $c['gallery'] ?? [];
+    $kick = trim($c['site']['hero_em'] ?? '') ?: trim($c['site']['school_name'] ?? '');
     ob_start(); ?>
     <section id="gallery" class="<?= $alt ?>">
       <div class="section-inner">
-        <div class="kicker">Waldrop Stadium</div>
+        <?php if ($kick !== ''): ?><div class="kicker"><?= h($kick) ?></div><?php endif; ?>
         <h2>Photos</h2>
-        <p class="lede"><?= h_rich($gal['lede'] ?? '') ?></p>
+        <?php if (!empty($gal['lede'])): ?><p class="lede"><?= h_rich($gal['lede']) ?></p><?php endif; ?>
         <div class="gallery-grid">
           <?php foreach (($gal['photos'] ?? []) as $photo): ?>
-          <div class="slot"><img src="<?= UPLOAD_URL . '/' . h($photo) ?>?v=<?= $v ?>" alt="Waldrop Stadium photo" loading="lazy"></div>
+          <div class="slot"><img src="<?= h(up_url($photo)) ?>?v=<?= $v ?>" alt="" loading="lazy"></div>
           <?php endforeach; ?>
         </div>
       </div>
@@ -274,12 +324,60 @@ $RENDERERS = [
     'policies' => 'sec_policies', 'media' => 'sec_media', 'tickets' => 'sec_tickets',
     'directions' => 'sec_directions', 'school' => 'sec_school', 'gallery' => 'sec_gallery',
 ];
+
+// ============================================================
+//  Routing
+// ============================================================
+function route_slug(): string {
+    $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
+    $uri = urldecode($uri);
+    if (BASE_URL !== '' && strncmp($uri, BASE_URL, strlen(BASE_URL)) === 0) {
+        $uri = substr($uri, strlen(BASE_URL));
+    }
+    $uri = ltrim($uri, '/');
+    if ($uri === '') return '';
+    $first = explode('/', $uri)[0];
+    if ($first === 'index.php') return '';
+    return strtolower($first);
+}
+
+$slug = route_slug();
+
+if ($slug === '') {
+    render_landing();
+    exit;
+}
+if (!school_exists($slug)) {
+    http_response_code(404);
+    render_not_found($slug);
+    exit;
+}
+
+// ---- A real school: set up its data + image context ----
+$GLOBALS['UPL_URL'] = school_upload_url($slug);
+$GLOBALS['UPL_DIR'] = school_upload_dir($slug);
+$c = load_content($slug);
+$site = $c['site'] ?? []; $tl = $c['timeline'] ?? [];
+$foot = $c['footer'] ?? []; $school = $c['school'] ?? [];
+$org = org_name($c);
+$v = @filemtime(school_data_file($slug)) ?: time();
+$order = $c['section_order'] ?? ['welcome','contacts','parking','policies','media','tickets','directions','school','gallery'];
+
+// Nav: only sections that actually render.
+$nav = [];
+foreach ($order as $sid) {
+    if (!empty($NAV_LABELS[$sid]) && section_nonempty($sid, $c)) $nav[$sid] = $NAV_LABELS[$sid];
+}
+
+$page_title = implode(' · ', array_filter([$site['tagline'] ?? '', $site['hero_em'] ?? '', $org]));
+$growth_url = GROWTH_URL !== '' ? GROWTH_URL : (BASE_URL . '/');
+$has_hero   = up_has('hero.jpg');
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?= h($site['tagline'] ?? 'Visiting Team Guide') ?> · Waldrop Stadium · Homewood High School</title>
+<title><?= h($page_title !== '' ? $page_title : 'Visiting Team Guide') ?></title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -294,6 +392,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--chalk);color:var(
 .topbar-inner{max-width:var(--max);margin:0 auto;display:flex;align-items:center;gap:16px;padding:10px 20px}
 .crest{width:52px;height:44px;border-radius:8px;background:#fff;padding:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
 .crest img{width:100%;height:100%;object-fit:contain}
+.crest-initial{font-weight:900;color:var(--navy);font-size:22px;line-height:1}
 .topbar-title{color:#fff;font-size:14px;line-height:1.25}
 .topbar-title strong{display:block;font-weight:900;text-transform:uppercase;font-size:15px;letter-spacing:.04em}
 .topnav{margin-left:auto;position:relative;display:flex;align-items:center;gap:10px}
@@ -317,6 +416,9 @@ a:focus-visible,button:focus-visible{outline:3px solid #fff;outline-offset:2px}
 .hero-overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,20,40,.15) 0%,rgba(10,20,40,.55) 55%,var(--navy-deep) 100%)}
 .hero-content{position:absolute;left:0;right:0;bottom:0;padding:0 20px 44px}
 .hero-content-inner{max-width:var(--max);margin:0 auto}
+/* plain hero (no image): content sits in normal flow over navy */
+.hero.plain{padding:64px 20px 44px}
+.hero.plain .hero-content{position:static;padding:0}
 .eyebrow{display:inline-block;background:var(--red);color:#fff;font-weight:900;text-transform:uppercase;font-size:13px;letter-spacing:.14em;padding:6px 14px;border-radius:4px;margin-bottom:14px}
 .hero h1{font-size:clamp(34px,6vw,64px);line-height:1.02;color:#fff}
 .hero h1 em{font-style:normal;color:var(--red-bright)}
@@ -379,7 +481,6 @@ h2{font-weight:900;text-transform:uppercase;font-size:clamp(24px,3.4vw,34px);col
 .policy li{padding-left:16px;position:relative}
 .policy li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:6px;border-radius:50%;background:var(--line)}
 .policy a{color:var(--red);font-weight:600}
-/* media broadcast band */
 .broadcast-band{background:var(--navy);border-radius:14px;padding:22px 24px;display:flex;align-items:center;gap:22px;flex-wrap:wrap;box-shadow:0 4px 18px rgba(16,30,60,.16)}
 .bb-tag{color:#fff;font-weight:900;text-transform:uppercase;letter-spacing:.08em;font-size:14px;flex-shrink:0}
 .bb-links{display:flex;gap:12px;flex-wrap:wrap;flex:1;justify-content:flex-end}
@@ -411,7 +512,6 @@ a.ticket-band.is-link:hover{transform:translateY(-2px);box-shadow:0 10px 30px rg
 .gmap-foot{background:var(--navy);color:#fff;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-size:14px}
 .gmap-foot a{color:#fff;text-decoration:underline;font-weight:700}
 @media(max-width:900px){.dir-grid{grid-template-columns:1fr}}
-/* school website band */
 .school-band{background:var(--navy);border-radius:16px;padding:30px 34px;display:flex;align-items:center;gap:26px;flex-wrap:wrap;box-shadow:0 4px 18px rgba(16,30,60,.16)}
 .school-logo{width:76px;flex-shrink:0}
 .school-text{flex:1;min-width:240px}
@@ -422,56 +522,67 @@ a.ticket-band.is-link:hover{transform:translateY(-2px);box-shadow:0 10px 30px rg
 .gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
 .slot{aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:var(--card);border:1px solid #E3E0D7}
 .slot img{width:100%;height:100%;object-fit:cover;display:block}
-footer{background:var(--navy-deep);color:#AEB9CF;padding:40px 20px;border-top:4px solid var(--red)}
+footer{background:var(--navy-deep);color:#AEB9CF;padding:40px 20px 24px;border-top:4px solid var(--red)}
 .footer-inner{max-width:var(--max);margin:0 auto;display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;font-size:14px}
 .footer-inner strong{color:#fff;font-weight:900;text-transform:uppercase;display:block;margin-bottom:6px;letter-spacing:.06em}
 footer a{color:#fff;text-decoration:underline}
+/* subtle growth line */
+.growth{background:var(--navy-deep);text-align:center;padding:4px 20px 30px}
+.growth a{color:#8A93A6;font-size:13px;text-decoration:none;border-bottom:1px dotted rgba(138,147,166,.6);padding-bottom:1px;transition:color .15s}
+.growth a:hover{color:#fff;border-color:#fff}
 </style>
 </head>
 <body>
 
 <nav class="topbar" aria-label="Main">
   <div class="topbar-inner">
-    <div class="crest"><img src="<?= UPLOAD_URL ?>/logo.png?v=<?= $v ?>" alt="<?= h($site['school_name'] ?? 'Homewood Patriots') ?> logo"></div>
+    <div class="crest"><?php if (up_has('logo.png')): ?><img src="<?= h(up_url('logo.png')) ?>?v=<?= $v ?>" alt="<?= h(($site['school_name'] ?? '') . ' logo') ?>"><?php else: ?><span class="crest-initial"><?= h(strtoupper(mb_substr(trim($site['school_name'] ?? '?'), 0, 1)) ?: '?') ?></span><?php endif; ?></div>
     <div class="topbar-title"><strong><?= h($site['school_name'] ?? '') ?></strong><?= h($site['tagline'] ?? '') ?></div>
     <div class="topnav">
       <?php if (!empty($school['url'])): ?>
-        <a class="nav-site" href="<?= h($school['url']) ?>" target="_blank" rel="noopener"><span class="lbl"><?= h($school['nav_label'] ?? 'Athletics Site') ?></span> ↗</a>
+        <a class="nav-site" href="<?= h($school['url']) ?>" target="_blank" rel="noopener"><span class="lbl"><?= h($school['nav_label'] ?: 'Athletics Site') ?></span> ↗</a>
       <?php endif; ?>
+      <?php if ($nav): ?>
       <button class="menu-btn" id="menuBtn" aria-expanded="false" aria-controls="menuPanel" aria-haspopup="true">
         <span class="bars" aria-hidden="true"><span></span><span></span><span></span></span> Menu
       </button>
       <div class="menu-panel" id="menuPanel" role="menu" aria-label="Sections">
-        <?php foreach ($order as $sid): if (!empty($NAV_LABELS[$sid])): ?>
-          <a href="#<?= h($sid) ?>" role="menuitem"><?= h($NAV_LABELS[$sid]) ?></a>
-        <?php endif; endforeach; ?>
+        <?php foreach ($nav as $sid => $label): ?>
+          <a href="#<?= h($sid) ?>" role="menuitem"><?= h($label) ?></a>
+        <?php endforeach; ?>
         <?php if (!empty($school['url'])): ?>
           <div class="divider"></div>
-          <a class="site" href="<?= h($school['url']) ?>" target="_blank" rel="noopener" role="menuitem"><?= h($school['nav_label'] ?? 'Athletics Site') ?> ↗</a>
+          <a class="site" href="<?= h($school['url']) ?>" target="_blank" rel="noopener" role="menuitem"><?= h($school['nav_label'] ?: 'Athletics Site') ?> ↗</a>
         <?php endif; ?>
       </div>
+      <?php endif; ?>
     </div>
   </div>
 </nav>
 
-<header class="hero">
-  <img class="hero-img" src="<?= UPLOAD_URL ?>/hero.jpg?v=<?= $v ?>" alt="Aerial view of Waldrop Stadium">
+<header class="hero<?= $has_hero ? '' : ' plain' ?>">
+  <?php if ($has_hero): ?>
+  <img class="hero-img" src="<?= h(up_url('hero.jpg')) ?>?v=<?= $v ?>" alt="<?= h(($site['hero_em'] ?? 'Stadium')) ?>">
   <div class="hero-overlay"></div>
+  <?php endif; ?>
   <div class="hero-content">
     <div class="hero-content-inner">
-      <span class="eyebrow"><?= h_rich($site['eyebrow'] ?? '') ?></span>
+      <?php if (!empty($site['eyebrow'])): ?><span class="eyebrow"><?= h_rich($site['eyebrow']) ?></span><?php endif; ?>
       <h1 class="display"><?= h_rich($site['hero_top'] ?? '') ?><br><em><?= h_rich($site['hero_em'] ?? '') ?></em></h1>
-      <p class="hero-sub"><?= h_rich($site['hero_sub'] ?? '') ?></p>
-      <div class="hero-addr">📍 <?= h_rich($site['address'] ?? '') ?> <?php if (!empty($site['address_note'])): ?><span class="note">· <?= h_rich($site['address_note']) ?></span><?php endif; ?></div>
+      <?php if (!empty($site['hero_sub'])): ?><p class="hero-sub"><?= h_rich($site['hero_sub']) ?></p><?php endif; ?>
+      <?php if (!empty($site['address'])): ?>
+      <div class="hero-addr">📍 <?= h_rich($site['address']) ?> <?php if (!empty($site['address_note'])): ?><span class="note">· <?= h_rich($site['address_note']) ?></span><?php endif; ?></div>
+      <?php endif; ?>
     </div>
   </div>
 </header>
 
+<?php if (!empty($tl['stops'])): ?>
 <div class="timeline" aria-label="Gameday timeline">
   <div class="timeline-inner">
-    <div class="timeline-label"><?= h_rich($tl['label'] ?? '') ?></div>
+    <?php if (!empty($tl['label'])): ?><div class="timeline-label"><?= h_rich($tl['label']) ?></div><?php endif; ?>
     <div class="tl-track">
-      <?php foreach (($tl['stops'] ?? []) as $stop): ?>
+      <?php foreach ($tl['stops'] as $stop): ?>
       <div class="tl-stop">
         <div class="tl-time display"><?= h_rich($stop['time'] ?? '') ?></div>
         <div class="tl-what"><?= h_rich($stop['what'] ?? '') ?></div>
@@ -480,11 +591,12 @@ footer a{color:#fff;text-decoration:underline}
     </div>
   </div>
 </div>
+<?php endif; ?>
 
 <?php
 $i = 0;
 foreach ($order as $sid) {
-    if (empty($RENDERERS[$sid])) continue;
+    if (empty($RENDERERS[$sid]) || !section_nonempty($sid, $c)) continue;
     $alt = ($i % 2 === 1) ? 'alt' : '';
     echo $RENDERERS[$sid]($c, $v, $alt);
     $i++;
@@ -494,21 +606,24 @@ foreach ($order as $sid) {
 <footer>
   <div class="footer-inner">
     <div style="display:flex;gap:16px;align-items:flex-start">
-      <img src="<?= UPLOAD_URL ?>/logo.png?v=<?= $v ?>" alt="" style="width:72px;flex-shrink:0">
+      <?php if (up_has('logo.png')): ?><img src="<?= h(up_url('logo.png')) ?>?v=<?= $v ?>" alt="" style="width:72px;flex-shrink:0"><?php endif; ?>
       <div>
-        <strong>Homewood High School Athletics</strong>
-        Waldrop Stadium · <?= h_rich($site['address'] ?? '') ?><br>
-        School office: <a href="<?= h(tel_href($foot['office_phone'] ?? '')) ?>"><?= h($foot['office_phone'] ?? '') ?></a>
-        <?php if (!empty($school['url'])): ?><br><a href="<?= h($school['url']) ?>" target="_blank" rel="noopener"><?= h($school['button_label'] ?? 'homewoodathletics.com') ?></a><?php endif; ?>
+        <strong><?= h($org !== '' ? $org . ' Athletics' : 'Athletics') ?></strong>
+        <?php if (!empty($site['hero_em'])): ?><?= h_rich($site['hero_em']) ?> · <?php endif; ?><?= h_rich($site['address'] ?? '') ?><br>
+        <?php if (!empty($foot['office_phone'])): ?>School office: <a href="<?= h(tel_href($foot['office_phone'])) ?>"><?= h($foot['office_phone']) ?></a><?php endif; ?>
+        <?php if (!empty($school['url'])): ?><br><a href="<?= h($school['url']) ?>" target="_blank" rel="noopener"><?= h($school['button_label'] ?: 'Athletics site') ?></a><?php endif; ?>
       </div>
     </div>
+    <?php if (!empty($foot['contact_name']) || !empty($foot['contact_email'])): ?>
     <div>
       <strong>Questions?</strong>
-      <?= h_rich($foot['contact_name'] ?? '') ?><br>
-      <a href="mailto:<?= h($foot['contact_email'] ?? '') ?>"><?= h($foot['contact_email'] ?? '') ?></a>
+      <?= h_rich($foot['contact_name'] ?? '') ?><?php if (!empty($foot['contact_email'])): ?><br><a href="mailto:<?= h($foot['contact_email']) ?>"><?= h($foot['contact_email']) ?></a><?php endif; ?>
     </div>
+    <?php endif; ?>
   </div>
 </footer>
+
+<div class="growth"><a href="<?= h($growth_url) ?>"><?= h(GROWTH_TEXT) ?></a></div>
 
 <script>
 (function(){
@@ -521,7 +636,6 @@ foreach ($order as $sid) {
     e.stopPropagation();
     panel.classList.contains('open') ? close() : open();
   });
-  // close when a link is chosen, when clicking outside, or on Escape
   panel.addEventListener('click', function(e){ if(e.target.closest('a')) close(); });
   document.addEventListener('click', function(e){
     if(!panel.contains(e.target) && e.target !== btn) close();
@@ -531,3 +645,115 @@ foreach ($order as $sid) {
 </script>
 </body>
 </html>
+<?php
+// ============================================================
+//  Landing / directory  +  404
+// ============================================================
+function render_shell_head(string $title): string {
+    ob_start(); ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><?= h($title) ?></title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#101E3C;--navy-deep:#0A1428;--red:#B22234;--red-bright:#E04553;--chalk:#F7F5F0;--card:#fff;--ink:#1B2437;--max:1080px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--chalk);color:var(--ink);line-height:1.6}
+.display{font-weight:900;text-transform:uppercase;letter-spacing:.02em}
+.lx-top{background:var(--navy-deep);border-bottom:3px solid var(--red);padding:14px 20px}
+.lx-top-in{max-width:var(--max);margin:0 auto;display:flex;align-items:center;gap:12px}
+.lx-badge{width:40px;height:40px;border-radius:9px;background:var(--red);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:20px}
+.lx-top strong{color:#fff;font-weight:900;text-transform:uppercase;letter-spacing:.05em;font-size:15px}
+.lx-hero{background:var(--navy);color:#fff;padding:72px 20px 64px;text-align:center}
+.lx-hero .eyebrow{display:inline-block;background:var(--red);color:#fff;font-weight:900;text-transform:uppercase;font-size:12px;letter-spacing:.14em;padding:6px 14px;border-radius:4px;margin-bottom:18px}
+.lx-hero h1{font-size:clamp(34px,6vw,60px);line-height:1.03;max-width:760px;margin:0 auto}
+.lx-hero h1 em{font-style:normal;color:var(--red-bright)}
+.lx-hero p{margin:16px auto 0;max-width:560px;color:#D9E0EE;font-size:clamp(15px,2vw,18px)}
+.lx-wrap{max-width:var(--max);margin:0 auto;padding:56px 20px 72px}
+.lx-kicker{color:var(--red);font-weight:900;text-transform:uppercase;font-size:12.5px;letter-spacing:.16em;margin-bottom:18px;text-align:center}
+.lx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+.lx-card{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid #E3E0D7;border-left:4px solid var(--red);border-radius:12px;padding:16px 18px;text-decoration:none;color:var(--ink);box-shadow:0 1px 6px rgba(16,30,60,.05);transition:transform .15s,box-shadow .15s}
+.lx-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(16,30,60,.12)}
+.lx-logo{width:46px;height:46px;border-radius:8px;background:#fff;border:1px solid #EEE;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.lx-logo img{width:100%;height:100%;object-fit:contain}
+.lx-logo span{font-weight:900;color:var(--navy);font-size:20px}
+.lx-card .nm{font-weight:800;color:var(--navy);font-size:16px;line-height:1.2}
+.lx-card .go{margin-left:auto;color:var(--red);font-weight:800;font-size:18px}
+.lx-empty{text-align:center;color:#6B7488;background:var(--card);border:1px dashed #CFCABC;border-radius:12px;padding:40px 20px}
+.lx-cta{margin-top:40px;background:var(--navy);border-radius:16px;padding:34px;text-align:center;color:#fff}
+.lx-cta h2{font-weight:900;text-transform:uppercase;font-size:clamp(20px,3vw,28px);margin-bottom:8px}
+.lx-cta p{color:#C9D2E4;max-width:520px;margin:0 auto 18px}
+.lx-cta a{display:inline-block;background:var(--red);color:#fff;text-decoration:none;font-weight:800;padding:13px 26px;border-radius:10px}
+.lx-cta a:hover{background:var(--red-bright)}
+.lx-foot{background:var(--navy-deep);color:#8A93A6;text-align:center;padding:26px 20px;font-size:13px}
+a:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+</style>
+</head>
+<body>
+<?php return ob_get_clean();
+}
+
+function render_landing(): void {
+    $schools = list_schools();
+    echo render_shell_head(PLATFORM_NAME);
+    ?>
+    <div class="lx-top"><div class="lx-top-in">
+      <div class="lx-badge">G</div><strong><?= h(PLATFORM_NAME) ?></strong>
+    </div></div>
+    <div class="lx-hero">
+      <span class="eyebrow"><?= h(PLATFORM_NAME) ?></span>
+      <h1 class="display">Clean, mobile-friendly <em>gameday guides</em> for visiting teams</h1>
+      <p>Everything a visiting team, band, and fans need — contacts, parking, directions, tickets, and more — on one simple page per school.</p>
+    </div>
+    <div class="lx-wrap">
+      <div class="lx-kicker">Schools</div>
+      <?php if ($schools): ?>
+      <div class="lx-grid">
+        <?php foreach ($schools as $sl => $st):
+            $name = $st['school_name'] ?? $sl;
+            $hasLogo = is_file(school_upload_dir($sl) . '/logo.png');
+            $logoUrl = school_upload_url($sl) . '/logo.png';
+        ?>
+        <a class="lx-card" href="<?= h(school_url($sl)) ?>">
+          <span class="lx-logo"><?php if ($hasLogo): ?><img src="<?= h($logoUrl) ?>" alt=""><?php else: ?><span><?= h(strtoupper(mb_substr(trim($name), 0, 1)) ?: '?') ?></span><?php endif; ?></span>
+          <span class="nm"><?= h($name) ?></span>
+          <span class="go">→</span>
+        </a>
+        <?php endforeach; ?>
+      </div>
+      <?php else: ?>
+      <div class="lx-empty">No schools yet. Sign in to the <a href="<?= h(BASE_URL . '/admin.php') ?>">admin</a> to add the first one.</div>
+      <?php endif; ?>
+
+      <div class="lx-cta">
+        <h2>Want a Gameday Guide for your school?</h2>
+        <p>Each guide takes minutes to set up and works on every phone. Reach out to get yours.</p>
+        <a href="mailto:hello@example.com?subject=Gameday%20Guide">Get your guide</a>
+      </div>
+    </div>
+    <div class="lx-foot"><?= h(PLATFORM_NAME) ?></div>
+    </body></html>
+    <?php
+}
+
+function render_not_found(string $slug): void {
+    echo render_shell_head('Not found · ' . PLATFORM_NAME);
+    ?>
+    <div class="lx-top"><div class="lx-top-in">
+      <div class="lx-badge">G</div><strong><?= h(PLATFORM_NAME) ?></strong>
+    </div></div>
+    <div class="lx-hero">
+      <span class="eyebrow">404</span>
+      <h1 class="display">We couldn't find <em><?= h($slug) ?></em></h1>
+      <p>That school guide doesn't exist yet. Head back to the directory to see what's available.</p>
+      <p style="margin-top:22px"><a href="<?= h(BASE_URL . '/') ?>" style="display:inline-block;background:var(--red);color:#fff;text-decoration:none;font-weight:800;padding:12px 24px;border-radius:10px">← All schools</a></p>
+    </div>
+    <div class="lx-foot"><?= h(PLATFORM_NAME) ?></div>
+    </body></html>
+    <?php
+}

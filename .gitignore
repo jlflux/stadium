@@ -1,19 +1,25 @@
 # ===========================================================
-#  Waldrop Stadium Visiting Team Guide — git ignore rules
+#  Gameday Guides — git ignore rules
 # ===========================================================
 
 # --- Secrets: NEVER commit (this repo is public) ---
-# config.php holds the admin password. Use config.sample.php as the
-# template: copy it to config.php on the server and set the password.
-config.php
+# Accounts + bcrypt password hashes. Use data/users.sample.json as the
+# template and create data/users.json on the server.
+data/users.json
 config.local.php
 
 # --- Uploaded images & runtime media ---
 # The uploads folder is tracked (so it exists on a fresh clone) but its
-# contents are not — logos, hero/parking images, and gallery photos live
-# on the server and are managed through the admin panel.
+# contents are not — each school's images live under uploads/{slug}/ on
+# the server and are managed through the admin panel.
 uploads/*
 !uploads/.gitkeep
+
+# --- Per-school content (runtime data) ---
+# Homewood is kept tracked as the migrated baseline backup; schools added
+# later through the admin are runtime data and stay out of the repo.
+data/schools/*.json
+!data/schools/homewood.json
 
 # --- OS / editor cruft ---
 .DS_Store

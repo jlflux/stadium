@@ -1,75 +1,57 @@
-WALDROP STADIUM — VISITING TEAM GUIDE
-Public site + admin panel (PHP, no database, no dependencies)
+GAMEDAY GUIDES — multi-school visiting-team guide platform
+PHP, no database, no build step. Runs on shared hosting (e.g. Hostinger).
 
-WHAT'S IN HERE
-  index.php          The public visiting team guide
-  admin.php          Password-protected admin panel
-  config.php         Settings — CHANGE THE PASSWORD HERE
-  data/content.json  All the site's text (edited by the admin panel)
-  uploads/           All images (logo, hero, parking diagram, gallery photos)
+WHAT'S HERE
+  index.php            Front controller: landing page + each school's guide
+  admin.php            Login-protected admin (school accounts + master admin)
+  config.php           Paths, platform settings, shared helpers (no secrets)
+  default.php          Blank-school template, cloned when a school is created
+  .htaccess            Pretty-URL routing + upload limits
+  data/
+    schools/{slug}.json  One file per school (the site content)
+    users.json           Accounts + bcrypt password hashes (NOT in git)
+    users.sample.json    Template for users.json
+    .htaccess            Blocks direct web access to the JSON files
+  uploads/
+    {slug}/...           Each school's images (logo, hero, parking, gallery)
+
+HOW ROUTING WORKS
+  /                 -> landing page / directory of all schools
+  /{school-slug}    -> that school's guide (e.g. /homewood, /vestavia)
+  /admin            -> admin login
 
 SETUP ON HOSTINGER
-  1. Upload this whole folder's contents to the directory you want
-     (public_html/visitors, a subdomain, wherever).
-  2. Open config.php and change ADMIN_PASSWORD from the default.
-  3. Make sure data/ and uploads/ are writable by PHP.
-     On Hostinger shared hosting they usually are already; if saves fail,
-     set both folders to permission 755 (or 775) in File Manager.
-     The included .htaccess raises the PHP upload limit and also blocks
-     direct web access to data/content.json. If your host ignores the
-     .htaccess PHP limits, don't worry — the admin panel shrinks images
-     in the browser first, so uploads arrive small enough anyway.
-  4. Visit yourdomain.com/path/admin.php and sign in.
+  1. Upload everything to the web root (or a subfolder — both work).
+  2. Create data/users.json from data/users.sample.json. Generate each
+     password hash with PHP, e.g.:
+         php -r "echo password_hash('your-password', PASSWORD_DEFAULT);"
+     Paste the output into the "password_hash" field for each account.
+     (Or just sign in as master and set credentials from the dashboard.)
+  3. Make data/, data/schools/, and uploads/ writable by PHP
+     (755 or 775 in File Manager if saves fail).
+  4. Go to /admin and sign in.
 
-USING THE ADMIN
-  - Everything on the page is editable: hero text, gameday clock times,
-    the welcome letter, contacts (add/remove/reorder by editing rows —
-    top row shows first on the site), parking bullets, stadium info
-    cards, media & broadcast info, ticket info, directions, the
-    Homewood Athletics website callout, and the footer.
-  - HTML WORKS IN EVERY BOX. Type <strong>bold</strong>,
-    <em>italics</em>, or <a href="https://...">a link</a> in any field
-    and it renders on the site. Dangerous tags (scripts, etc.) are
+ACCOUNTS
+  - Master admin: create schools, set/reset each school's login, delete a
+    school, and jump into any school's guide to edit it.
+  - School admin: edits only its own guide and images — nothing else.
+  Creating a school clones default.php into data/schools/{slug}.json,
+  makes uploads/{slug}/, and adds a hashed login.
+
+USING THE ADMIN (per school)
+  - Every section is editable: hero, gameday clock, welcome letter,
+    contacts, parking, stadium info, media & broadcast, tickets,
+    directions, athletics-website callout, gallery, footer.
+  - HTML works in every text box (bold, italics, links); scripts are
     stripped automatically.
-  - Bulleted lists are edited one-bullet-per-line in the textareas.
-
-  REORDERING SECTIONS
-  - The "Page Section Order" box at the top lets you drag sections into
-    any order (or use the up/down arrows). Whatever order you set is the
-    order they appear on the page. The hero image and gameday clock stay
-    pinned at the top; the footer stays at the bottom.
-
-  TICKETS (GoFan)
-  - Paste your GoFan link into the "GoFan / ticket link" field and the
-    whole red ticket box becomes one big clickable button. Leave it
-    blank for a plain (non-clickable) box.
-
-  MEDIA & BROADCAST
-  - Add YouTube, NFHS Network, or any other broadcast links. Each shows
-    as a bold button under a "We're always live" banner. Add the URL and
-    the button turns red/active; leave the URL blank and it shows greyed
-    out as "coming soon."
-
-  HOMEWOOD ATHLETICS WEBSITE
-  - Set the website URL once and it appears in three places: a red
-    button in the top navigation, a callout section on the page, and a
-    link in the footer.
-  - The four fixed images (logo, welcome mark, hero photo, parking
-    diagram) each have their own upload slot. New uploads replace the
-    old image instantly.
-  - IMAGE SIZE IS HANDLED FOR YOU. Upload photos straight off your
-    phone — they're automatically shrunk in the browser before upload
-    and again on the server, so you never have to resize anything.
-    Logo and welcome-mark stay PNG (transparency preserved); hero,
-    parking, and gallery photos are saved as optimized JPEGs.
-  - Gallery photos: upload as many as you want; remove any with the
-    Remove button under its thumbnail.
-  - The Google Map pins whatever is in the "Google Maps search" field —
-    no API key needed.
+  - Drag the "Page Section Order" list to reorder sections on the page.
+  - Paste a GoFan link to turn the ticket box into a button.
+  - Upload images straight from a phone — they're resized automatically.
+  - Change your own password at the bottom of the editor.
 
 NOTES
-  - No database required. Content lives in data/content.json — back that
-    file (and uploads/) up occasionally and you can restore the whole
-    site.
-  - The admin URL is not linked anywhere on the public site.
-  - To change the password later, edit ADMIN_PASSWORD in config.php.
+  - No database. Content is flat-file JSON under data/schools/.
+  - Blank/partial schools hide empty sections and missing images, so a new
+    school never looks broken.
+  - Every public school page has a subtle "Want a Gameday Guide like this
+    for your school?" link to the landing page (configurable in config.php).
