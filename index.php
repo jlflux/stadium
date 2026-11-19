@@ -662,7 +662,7 @@ function render_shell_head(string $title): string {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-:root{--navy:#0F1A24;--navy-deep:#0A1218;--red:#14B8A6;--red-bright:#3EC5B6;--chalk:#F7F5F0;--card:#fff;--ink:#1B2437;--max:1080px}
+:root{--navy:#121316;--navy-deep:#0C0D0F;--red:#38B6FF;--red-bright:#60C5FF;--chalk:#F7F5F0;--card:#fff;--ink:#1B2437;--max:1080px}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',system-ui,sans-serif;background:var(--chalk);color:var(--ink);line-height:1.6}
 .display{font-weight:900;text-transform:uppercase;letter-spacing:.02em}

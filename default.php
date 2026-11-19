@@ -20,11 +20,11 @@ return [
         'address'      => '',
         'address_note' => '',
     ],
-    // Brand colors — VenueLink default (Ink + Teal). Each school can change
-    // these in the admin; deep/bright shades are derived automatically.
+    // Brand colors — VenueLink default (sky blue on near-black). Each school
+    // can change these in the admin; deep/bright shades derive automatically.
     'theme' => [
-        'primary' => '#0F1A24',
-        'accent'  => '#14B8A6',
+        'primary' => '#121316',
+        'accent'  => '#38B6FF',
     ],
     'timeline' => [
         'label' => 'Gameday Clock',
