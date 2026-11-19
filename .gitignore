@@ -15,11 +15,11 @@ config.local.php
 uploads/*
 !uploads/.gitkeep
 
-# --- Per-school content (runtime data) ---
-# Homewood is kept tracked as the migrated baseline backup; schools added
-# later through the admin are runtime data and stay out of the repo.
+# --- Per-school content (runtime, server-owned) ---
+# All school content is edited live in the admin and lives on the server, so
+# it never rides along with a code deploy and an auto-pull can't overwrite it.
+# (Homewood's migrated copy is recoverable from git history and the deploy zip.)
 data/schools/*.json
-!data/schools/homewood.json
 
 # --- OS / editor cruft ---
 .DS_Store
