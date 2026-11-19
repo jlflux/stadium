@@ -15,20 +15,20 @@ an alternative.
 Hostinger pulls the repo into your site folder, and a webhook makes it
 re-pull on every push.
 
-1. **Seed the site once:** upload `stadium-deploy.zip` to the site folder and
-   extract it, so `data/` and `uploads/` exist on the server. (A pull only
-   updates code; it never creates or overwrites these.)
-2. In hPanel open **Advanced → GIT** (or Website → manage → Advanced → GIT).
-3. **Create a repository:**
+1. In hPanel open **Advanced → GIT** (or Website → manage → Advanced → GIT).
+2. **Create a repository:**
    - Repository: `git@github.com:jlflux/stadium.git`
    - Branch: `main`
    - Directory: the site's folder (e.g. `public_html` or `public_html/guides`)
-4. **Give it access to the private repo:** Hostinger shows an SSH key — copy it,
+3. **Give it access to the private repo:** Hostinger shows an SSH key — copy it,
    then in GitHub go to the repo → **Settings → Deploy keys → Add deploy key**,
-   paste it (read-only is fine).
-5. **Turn on auto-deploy:** in the Hostinger GIT page, copy the **webhook URL**,
+   paste it (read-only is fine). Then hit **Deploy** so the code lands.
+4. **Turn on auto-deploy:** on the Hostinger GIT page, copy the **webhook URL**,
    then in GitHub go to the repo → **Settings → Webhooks → Add webhook**, paste
    the URL, set content type `application/json`, and save.
+5. **Add the runtime data once:** from `stadium-deploy.zip`, upload the `data/`
+   and `uploads/` folders into the same site folder (File Manager). These are
+   git-ignored, so future pulls never touch them.
 
 Done — every push now auto-pulls to your site. You can also hit **Deploy** on the
 Hostinger GIT page to pull on demand.
