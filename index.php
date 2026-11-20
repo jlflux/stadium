@@ -742,10 +742,11 @@ function render_landing(): void {
       <?php if (SIGNUP_ENABLED): ?><a href="#signup" class="lx-hero-btn">Create your school's guide →</a><?php endif; ?>
     </div>
     <div class="lx-wrap">
-      <div class="lx-kicker">Schools</div>
-      <?php if ($schools): ?>
+      <?php $featured = array_filter($schools, fn($st) => !empty($st['_featured'])); ?>
+      <?php if ($featured): ?>
+      <div class="lx-kicker">Featured Schools</div>
       <div class="lx-grid">
-        <?php foreach ($schools as $sl => $st):
+        <?php foreach ($featured as $sl => $st):
             $name = $st['school_name'] ?? $sl;
             $hasLogo = is_file(school_upload_dir($sl) . '/logo.png');
             $logoUrl = school_upload_url($sl) . '/logo.png';
@@ -757,8 +758,6 @@ function render_landing(): void {
         </a>
         <?php endforeach; ?>
       </div>
-      <?php else: ?>
-      <div class="lx-empty">No schools yet. Sign in to the <a href="<?= h(BASE_URL . '/admin.php') ?>">admin</a> to add the first one.</div>
       <?php endif; ?>
 
       <?php if (SIGNUP_ENABLED): ?>

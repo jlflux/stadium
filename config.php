@@ -82,13 +82,17 @@ function default_template(): array {
 }
 
 // List every school: [slug => site array], sorted by display name.
+// Each site array also carries a '_featured' bool (master-curated flag used
+// to decide which schools appear on the public landing page).
 function list_schools(): array {
     $out = [];
     foreach (glob(SCHOOLS_DIR . '/*.json') ?: [] as $f) {
         $slug = basename($f, '.json');
         if (!valid_slug($slug)) continue;
         $c = load_content($slug);
-        $out[$slug] = $c['site'] ?? [];
+        $site = $c['site'] ?? [];
+        $site['_featured'] = !empty($c['featured']);
+        $out[$slug] = $site;
     }
     uasort($out, fn($a, $b) => strcasecmp($a['school_name'] ?? '', $b['school_name'] ?? ''));
     return $out;

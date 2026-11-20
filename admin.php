@@ -239,6 +239,18 @@ if ($logged_in && $_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['do_log
         }
     }
 
+    // ---- MASTER: feature / unfeature a school on the landing page ----
+    elseif (isset($_POST['toggle_feature']) && $role === 'master') {
+        $slug = (string)($_POST['school'] ?? '');
+        if (!school_exists($slug)) { $err = 'Unknown school.'; }
+        else {
+            $sc = load_content($slug);
+            $sc['featured'] = empty($sc['featured']);
+            save_content($slug, $sc);
+            $msg = ($sc['featured'] ? 'Added ' : 'Removed ') . $slug . ($sc['featured'] ? ' to the featured list.' : ' from the featured list.');
+        }
+    }
+
     // ---- ANY ROLE: change own password ----
     elseif (isset($_POST['change_password'])) {
         $cur = (string)($_POST['cur_password'] ?? '');
@@ -371,6 +383,10 @@ textarea{min-height:84px;resize:vertical}
 .btn.ghost:hover{background:rgba(56,182,255,.1)}
 .btn.danger{background:var(--danger);color:#1A0506}.btn.danger:hover{background:#FF7A7F}
 .btn.sm{padding:7px 13px;font-size:12.5px}
+.feat-btn{background:transparent;border:1.5px solid var(--line);color:var(--muted)}
+.feat-btn:hover{background:transparent;border-color:var(--accent);color:var(--accent)}
+.feat-btn.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.feat-btn.on:hover{background:#5BC6FF;color:var(--accent-ink)}
 .savebar{position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 30%);padding:16px 0 8px;text-align:right}
 .order-list{list-style:none;display:grid;gap:8px}
 .order-item{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 14px;cursor:default}
@@ -463,18 +479,24 @@ if ($role === 'master' && !$editing_slug):
     $schools = list_schools();
 ?>
   <h1>Master Dashboard</h1>
-  <p class="sub">Create schools, manage their logins, and jump into any school's guide to edit it.</p>
+  <p class="sub">Create schools, manage their logins, and jump into any school's guide to edit it. Use <strong>★ Feature</strong> to put the best-looking guides on the public landing page — new sign-ups stay off it until you feature them.</p>
 
   <fieldset>
     <legend>Schools (<?= count($schools) ?>)</legend>
     <?php if ($schools): ?>
     <table class="school-table">
-      <thead><tr><th>School</th><th>URL</th><th></th></tr></thead>
+      <thead><tr><th>School</th><th>Front page</th><th></th></tr></thead>
       <tbody>
-        <?php foreach ($schools as $sl => $st): ?>
+        <?php foreach ($schools as $sl => $st): $feat = !empty($st['_featured']); ?>
         <tr>
-          <td><span class="nm"><?= h($st['school_name'] ?? $sl) ?></span><br><span class="sl"><?= h($sl) ?></span></td>
-          <td><a href="<?= h(school_url($sl)) ?>" target="_blank" rel="noopener"><?= h(rtrim(BASE_URL, '/') . '/' . $sl) ?></a></td>
+          <td><span class="nm"><?= h($st['school_name'] ?? $sl) ?></span><br><span class="sl"><a href="<?= h(school_url($sl)) ?>" target="_blank" rel="noopener"><?= h(rtrim(BASE_URL, '/') . '/' . $sl) ?></a></span></td>
+          <td>
+            <form method="post" style="display:inline">
+              <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>">
+              <input type="hidden" name="school" value="<?= h($sl) ?>">
+              <button class="btn sm feat-btn<?= $feat ? ' on' : '' ?>" name="toggle_feature" value="1" title="<?= $feat ? 'Showing on the landing page — click to remove' : 'Not on the landing page — click to feature' ?>"><?= $feat ? '★ Featured' : '☆ Feature' ?></button>
+            </form>
+          </td>
           <td><div class="acts">
             <a class="btn sm" href="<?= h(BASE_URL . '/admin.php?edit=' . urlencode($sl)) ?>">Edit guide</a>
           </div></td>
