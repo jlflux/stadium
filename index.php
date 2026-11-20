@@ -320,90 +320,116 @@ function sec_gallery($c, $v, $alt) {
     <?php return ob_get_clean();
 }
 
-// ---- multi-venue: "which sport?" finder ----
-function render_venue_finder(array $venues, string $alt): string {
+// ---- shared inner bodies (used by both single- and multi-venue) ----
+function sec_parking_body(array $park, string $parkImg, $v): string {
     ob_start(); ?>
-    <section class="<?= $alt ?>" id="venues">
-      <div class="section-inner">
-        <div class="kicker">Find Your Venue</div>
-        <h2>Which sport are you here for?</h2>
-        <p class="lede">Our teams play at more than one location. Tap your sport to jump to the right venue — address, parking, and directions.</p>
-        <div class="sport-chips">
-          <?php foreach ($venues as $vv): foreach (($vv['sports'] ?? []) as $sport): if (trim($sport) === '') continue; ?>
-            <a class="sport-chip" href="#venue-<?= h($vv['id']) ?>"><span class="sc-sport"><?= h($sport) ?></span><span class="sc-venue"><?= h($vv['name']) ?></span></a>
-          <?php endforeach; endforeach; ?>
+      <?php if (!empty($park['lede'])): ?><p class="lede"><?= h_rich($park['lede']) ?></p><?php endif; ?>
+      <?php if (!empty($park['cards'])): ?>
+      <div class="parking-grid">
+        <?php foreach ($park['cards'] as $card): ?>
+        <div class="p-card">
+          <div class="p-head"><span class="dot"></span><?= h_rich($card['title'] ?? '') ?></div>
+          <ul><?php foreach (($card['items'] ?? []) as $item): ?><li><?= h_rich($item) ?></li><?php endforeach; ?></ul>
         </div>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
+      <?php if (up_has($parkImg)): ?>
+      <figure class="map-figure">
+        <img src="<?= h(up_url($parkImg)) ?>?v=<?= $v ?>" alt="Gameday parking map">
+        <?php if (!empty($park['caption'])): ?><figcaption><?= h_rich($park['caption']) ?></figcaption><?php endif; ?>
+      </figure>
+      <?php endif; ?>
+    <?php return ob_get_clean();
+}
+
+function sec_directions_body(array $dir, string $name, $v): string {
+    $mapq = trim($dir['map_query'] ?? '');
+    ob_start(); ?>
+      <?php if (!empty($dir['lede'])): ?><p class="lede"><?= h_rich($dir['lede']) ?></p><?php endif; ?>
+      <div class="dir-grid">
+        <div class="dir-col">
+          <?php foreach (($dir['routes'] ?? []) as $route): ?>
+          <div class="dir-card">
+            <h3 class="display"><?= h_rich($route['title'] ?? '') ?></h3>
+            <ol><?php foreach (($route['steps'] ?? []) as $step): ?><li><?= h_rich($step) ?></li><?php endforeach; ?></ol>
+          </div>
+          <?php endforeach; ?>
+        </div>
+        <?php if ($mapq !== ''): ?>
+        <div class="gmap">
+          <iframe title="Map of <?= h($name) ?>" src="https://www.google.com/maps?q=<?= rawurlencode($mapq) ?>&output=embed" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
+          <div class="gmap-foot">
+            <span><?= h_rich($dir['map_label'] ?? '') ?></span>
+            <a href="https://www.google.com/maps/dir/?api=1&destination=<?= rawurlencode($mapq) ?>" target="_blank" rel="noopener">Get Directions &rarr;</a>
+          </div>
+        </div>
+        <?php endif; ?>
+      </div>
+    <?php return ob_get_clean();
+}
+
+// ---- multi-venue: one swappable pane per venue inside a single section shell ----
+function sec_parking_multi(array $venues, $v, string $alt): string {
+    ob_start(); ?>
+    <section id="parking" class="<?= $alt ?> venue-section">
+      <div class="section-inner">
+        <div class="kicker">Arrival &amp; Parking</div>
+        <h2>Getting In</h2>
+        <?php foreach ($venues as $k => $vn):
+            $park = $vn['parking'] ?? [];
+            if (empty($park['lede']) && empty($park['cards']) && !up_has($vn['parking_img'])) continue; ?>
+        <div class="venue-pane" data-venue="<?= h($vn['id']) ?>"<?= $k === 0 ? '' : ' hidden' ?>>
+          <div class="pane-venue"><?= h_rich($vn['name']) ?></div>
+          <?= sec_parking_body($park, $vn['parking_img'], $v) ?>
+        </div>
+        <?php endforeach; ?>
       </div>
     </section>
     <?php return ob_get_clean();
 }
 
-// ---- multi-venue: one block per venue (address, clock, directions, parking) ----
-function render_venue_block(array $vn, $v, string $alt): string {
-    $hasPark  = up_has($vn['parking_img']);
-    $hasMap   = trim($vn['map_query'] ?? '') !== '';
+function sec_directions_multi(array $venues, $v, string $alt): string {
     ob_start(); ?>
-    <section class="<?= $alt ?>" id="venue-<?= h($vn['id']) ?>">
+    <section id="directions" class="<?= $alt ?> venue-section">
       <div class="section-inner">
-        <div class="kicker">Venue</div>
-        <h2><?= h_rich($vn['name']) ?></h2>
-        <?php if (!empty($vn['sports'])): ?>
-        <div class="venue-sports"><?php foreach ($vn['sports'] as $sp): if (trim($sp) === '') continue; ?><span><?= h($sp) ?></span><?php endforeach; ?></div>
-        <?php endif; ?>
-        <?php if (!empty($vn['address'])): ?>
-        <div class="venue-addr">📍 <?= h_rich($vn['address']) ?><?php if (!empty($vn['address_note'])): ?> <span class="note">· <?= h_rich($vn['address_note']) ?></span><?php endif; ?></div>
-        <?php endif; ?>
-        <?php if (!empty($vn['timeline']['stops'])): ?>
-        <div class="venue-clock">
-          <?php foreach ($vn['timeline']['stops'] as $stop): ?>
-          <div class="vc-item"><span class="vc-time"><?= h_rich($stop['time'] ?? '') ?></span><span class="vc-what"><?= h_rich($stop['what'] ?? '') ?></span></div>
-          <?php endforeach; ?>
+        <div class="kicker">Finding Us</div>
+        <?php foreach ($venues as $k => $vn):
+            if (empty($vn['directions']['routes']) && trim($vn['map_query'] ?? '') === '') continue;
+            $dir = $vn['directions'] ?? [];
+            $dir['map_query'] = $vn['map_query'] ?? '';
+            $dir['map_label'] = $vn['map_label'] ?? '';
+            $nm = $vn['name'] ?: 'the venue'; ?>
+        <div class="venue-pane" data-venue="<?= h($vn['id']) ?>"<?= $k === 0 ? '' : ' hidden' ?>>
+          <h2>Directions to <?= h($nm) ?></h2>
+          <?= sec_directions_body($dir, $nm, $v) ?>
         </div>
-        <?php endif; ?>
-        <?php if (!empty($vn['directions']['routes']) || $hasMap): ?>
-        <div class="dir-grid">
-          <div class="dir-col">
-            <?php foreach (($vn['directions']['routes'] ?? []) as $route): ?>
-            <div class="dir-card">
-              <h3 class="display"><?= h_rich($route['title'] ?? '') ?></h3>
-              <ol><?php foreach (($route['steps'] ?? []) as $step): ?><li><?= h_rich($step) ?></li><?php endforeach; ?></ol>
-            </div>
-            <?php endforeach; ?>
-          </div>
-          <?php if ($hasMap): ?>
-          <div class="gmap">
-            <iframe title="Map of <?= h($vn['name']) ?>" src="https://www.google.com/maps?q=<?= rawurlencode($vn['map_query']) ?>&output=embed" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
-            <div class="gmap-foot">
-              <span><?= h_rich($vn['map_label'] ?: $vn['name']) ?></span>
-              <a href="https://www.google.com/maps/dir/?api=1&destination=<?= rawurlencode($vn['map_query']) ?>" target="_blank" rel="noopener">Get Directions →</a>
-            </div>
-          </div>
-          <?php endif; ?>
-        </div>
-        <?php endif; ?>
-        <?php if (!empty($vn['parking']['lede']) || !empty($vn['parking']['cards']) || $hasPark): ?>
-        <div class="venue-parking">
-          <?php if (!empty($vn['parking']['lede'])): ?><p class="lede" style="margin-top:28px"><?= h_rich($vn['parking']['lede']) ?></p><?php endif; ?>
-          <?php if (!empty($vn['parking']['cards'])): ?>
-          <div class="parking-grid">
-            <?php foreach ($vn['parking']['cards'] as $card): ?>
-            <div class="p-card">
-              <div class="p-head"><span class="dot"></span><?= h_rich($card['title'] ?? '') ?></div>
-              <ul><?php foreach (($card['items'] ?? []) as $item): ?><li><?= h_rich($item) ?></li><?php endforeach; ?></ul>
-            </div>
-            <?php endforeach; ?>
-          </div>
-          <?php endif; ?>
-          <?php if ($hasPark): ?>
-          <figure class="map-figure">
-            <img src="<?= h(up_url($vn['parking_img'])) ?>?v=<?= $v ?>" alt="Parking map for <?= h($vn['name']) ?>">
-            <?php if (!empty($vn['parking']['caption'])): ?><figcaption><?= h_rich($vn['parking']['caption']) ?></figcaption><?php endif; ?>
-          </figure>
-          <?php endif; ?>
-        </div>
-        <?php endif; ?>
+        <?php endforeach; ?>
       </div>
     </section>
+    <?php return ob_get_clean();
+}
+
+// ---- multi-venue gameday clock (one swappable pane per venue) ----
+function multi_clock(array $venues): string {
+    ob_start(); ?>
+    <div class="timeline venue-section" aria-label="Gameday timeline">
+      <?php foreach ($venues as $k => $vn):
+          $tl = $vn['timeline'] ?? [];
+          if (empty($tl['stops'])) continue; ?>
+      <div class="timeline-inner venue-pane" data-venue="<?= h($vn['id']) ?>"<?= $k === 0 ? '' : ' hidden' ?>>
+        <?php if (!empty($tl['label'])): ?><div class="timeline-label"><?= h_rich($tl['label']) ?></div><?php endif; ?>
+        <div class="tl-track">
+          <?php foreach ($tl['stops'] as $stop): ?>
+          <div class="tl-stop">
+            <div class="tl-time display"><?= h_rich($stop['time'] ?? '') ?></div>
+            <div class="tl-what"><?= h_rich($stop['what'] ?? '') ?></div>
+          </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <?php endforeach; ?>
+    </div>
     <?php return ob_get_clean();
 }
 
@@ -471,14 +497,22 @@ $v = @filemtime(school_data_file($slug)) ?: time();
 $TC = theme_colors($c);   // per-school brand colors
 $order = $c['section_order'] ?? ['welcome','contacts','parking','policies','media','tickets','directions','school','gallery'];
 
-// Nav: venues first (multi only), then the shared sections that render.
-$nav = [];
-if ($multi) {
-    foreach ($venues as $vv) $nav['venue-' . $vv['id']] = $vv['name'] ?: 'Venue';
+// Does ANY venue have parking / directions / a clock? (multi-venue gating)
+$anyPark = $anyDir = $anyClock = false;
+foreach ($venues as $vn) {
+    if (!empty($vn['parking']['lede']) || !empty($vn['parking']['cards']) || up_has($vn['parking_img'])) $anyPark = true;
+    if (!empty($vn['directions']['routes']) || trim($vn['map_query'] ?? '') !== '') $anyDir = true;
+    if (!empty($vn['timeline']['stops'])) $anyClock = true;
 }
+
+// Nav: the usual single-page section list. Parking & Directions stay as
+// one link each; their content swaps with the chosen sport/venue.
+$nav = [];
 foreach ($order as $sid) {
-    if ($multi && ($sid === 'parking' || $sid === 'directions')) continue; // per-venue now
-    if (!empty($NAV_LABELS[$sid]) && section_nonempty($sid, $c)) $nav[$sid] = $NAV_LABELS[$sid];
+    if (empty($NAV_LABELS[$sid])) continue;
+    if ($multi && $sid === 'parking')    { if ($anyPark) $nav[$sid] = $NAV_LABELS[$sid]; continue; }
+    if ($multi && $sid === 'directions') { if ($anyDir)  $nav[$sid] = $NAV_LABELS[$sid]; continue; }
+    if (section_nonempty($sid, $c)) $nav[$sid] = $NAV_LABELS[$sid];
 }
 
 $page_title = implode(' · ', array_filter([$site['tagline'] ?? '', $site['hero_em'] ?? '', $org]));
@@ -637,22 +671,20 @@ a.ticket-band.is-link:hover{transform:translateY(-2px);box-shadow:0 10px 30px rg
 .gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
 .slot{aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:var(--card);border:1px solid #E3E0D7}
 .slot img{width:100%;height:100%;object-fit:cover;display:block}
-/* multi-venue finder + venue blocks */
-.sport-chips{display:flex;flex-wrap:wrap;gap:12px}
-.sport-chip{display:flex;flex-direction:column;gap:2px;background:var(--navy);color:#fff;text-decoration:none;border-radius:12px;padding:14px 20px;min-width:150px;border:1px solid rgba(255,255,255,.08);transition:transform .14s,background .14s}
-.sport-chip:hover{transform:translateY(-2px);background:var(--red)}
-.sport-chip .sc-sport{font-weight:800;font-size:16px}
-.sport-chip .sc-venue{font-size:12px;opacity:.72;font-weight:600}
-.sport-chip:hover .sc-venue{opacity:.9}
-.venue-sports{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
-.venue-sports span{background:#E6EDF5;color:var(--navy);font-weight:700;font-size:12.5px;padding:5px 12px;border-radius:999px;border:1px solid #D4DEEA}
-.venue-addr{display:inline-flex;align-items:center;gap:8px;background:var(--navy);color:#fff;border-radius:999px;padding:9px 18px;font-weight:600;font-size:14.5px;flex-wrap:wrap;margin-bottom:8px}
-.venue-addr .note{color:#FF9AA5;font-weight:700}
-.venue-clock{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0 6px}
-.vc-item{background:var(--card);border:1px solid #E3E0D7;border-left:4px solid var(--red);border-radius:10px;padding:10px 16px}
-.vc-time{display:block;font-weight:900;color:var(--navy);font-size:17px}
-.vc-what{display:block;color:#6B7488;font-size:12.5px;margin-top:2px}
-.venue-parking{margin-top:8px}
+/* multi-venue: small sport switcher + swappable panes */
+.venue-pane[hidden]{display:none}
+.hero-addr .ha-venue{font-weight:800}
+.venue-switch{background:var(--navy);color:#fff;border-bottom:1px solid rgba(255,255,255,.12)}
+.vs-inner{max-width:1120px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.vs-lead{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#AEBAD0;white-space:nowrap}
+.vs-chips{display:flex;flex-wrap:wrap;gap:6px}
+.vs-chip{background:rgba(255,255,255,.08);color:#E7EDF6;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:6px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:background .12s,color .12s,border-color .12s}
+.vs-chip:hover{background:rgba(255,255,255,.16)}
+.vs-chip.on{background:var(--red);color:#fff;border-color:var(--red)}
+.vs-at{font-size:13px;color:#AEBAD0;white-space:nowrap;margin-left:auto}
+.vs-at .vs-venue{color:#fff}
+.pane-venue{font-weight:900;text-transform:uppercase;letter-spacing:.06em;font-size:13px;color:var(--red);margin-bottom:14px}
+@media(max-width:640px){.vs-at{margin-left:0;width:100%}}
 footer{background:var(--navy-deep);color:#AEB9CF;padding:40px 20px 24px;border-top:4px solid var(--red)}
 .footer-inner{max-width:var(--max);margin:0 auto;display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;font-size:14px}
 .footer-inner strong{color:#fff;font-weight:900;text-transform:uppercase;display:block;margin-bottom:6px;letter-spacing:.06em}
@@ -699,18 +731,37 @@ footer a{color:#fff;text-decoration:underline}
   <div class="hero-content">
     <div class="hero-content-inner">
       <?php if (!empty($site['eyebrow'])): ?><span class="eyebrow"><?= h_rich($site['eyebrow']) ?></span><?php endif; ?>
-      <h1 class="display"><?= h_rich($site['hero_top'] ?? '') ?><br><em><?= h_rich($site['hero_em'] ?? '') ?></em></h1>
+      <h1 class="display"><?= h_rich($site['hero_top'] ?? '') ?><br><?php if ($multi): foreach ($venues as $k => $vn): ?><em class="venue-pane" data-venue="<?= h($vn['id']) ?>"<?= $k === 0 ? '' : ' hidden' ?>><?= h_rich($vn['name'] ?: ($site['hero_em'] ?? '')) ?></em><?php endforeach; else: ?><em><?= h_rich($site['hero_em'] ?? '') ?></em><?php endif; ?></h1>
       <?php if (!empty($site['hero_sub'])): ?><p class="hero-sub"><?= h_rich($site['hero_sub']) ?></p><?php endif; ?>
       <?php if (!$multi && !empty($site['address'])): ?>
       <div class="hero-addr">📍 <?= h_rich($site['address']) ?> <?php if (!empty($site['address_note'])): ?><span class="note">· <?= h_rich($site['address_note']) ?></span><?php endif; ?></div>
-      <?php elseif ($multi): ?>
-      <div class="hero-addr">📍 Multiple venues — find yours below</div>
-      <?php endif; ?>
+      <?php elseif ($multi): foreach ($venues as $k => $vn): if (empty($vn['address'])) continue; ?>
+      <div class="hero-addr venue-pane" data-venue="<?= h($vn['id']) ?>"<?= $k === 0 ? '' : ' hidden' ?>>📍 <span class="ha-venue"><?= h_rich($vn['name']) ?></span> · <?= h_rich($vn['address']) ?><?php if (!empty($vn['address_note'])): ?> <span class="note">· <?= h_rich($vn['address_note']) ?></span><?php endif; ?></div>
+      <?php endforeach; endif; ?>
     </div>
   </div>
 </header>
 
-<?php if (!$multi && !empty($tl['stops'])): ?>
+<?php if ($multi): ?>
+<div class="venue-switch" id="venue-switch">
+  <div class="vs-inner">
+    <span class="vs-lead">I'm here for</span>
+    <div class="vs-chips" role="tablist" aria-label="Choose your sport">
+      <?php foreach ($venues as $vn):
+          $sports = array_values(array_filter(array_map('trim', $vn['sports'] ?? []), fn($s) => $s !== ''));
+          if (!$sports) $sports = [$vn['name'] ?: 'This venue'];
+          foreach ($sports as $sport): ?>
+      <button type="button" class="vs-chip" role="tab" data-venue="<?= h($vn['id']) ?>" data-sport="<?= h($sport) ?>"><?= h($sport) ?></button>
+      <?php endforeach; endforeach; ?>
+    </div>
+    <span class="vs-at">at <strong class="vs-venue"></strong></span>
+  </div>
+</div>
+<?php endif; ?>
+
+<?php if ($multi && $anyClock): ?>
+<?= multi_clock($venues) ?>
+<?php elseif (!$multi && !empty($tl['stops'])): ?>
 <div class="timeline" aria-label="Gameday timeline">
   <div class="timeline-inner">
     <?php if (!empty($tl['label'])): ?><div class="timeline-label"><?= h_rich($tl['label']) ?></div><?php endif; ?>
@@ -728,14 +779,12 @@ footer a{color:#fff;text-decoration:underline}
 
 <?php
 $i = 0;
-if ($multi) {
-    echo render_venue_finder($venues, ($i % 2 === 1) ? 'alt' : ''); $i++;
-    foreach ($venues as $vv) { echo render_venue_block($vv, $v, ($i % 2 === 1) ? 'alt' : ''); $i++; }
-}
 foreach ($order as $sid) {
-    if ($multi && ($sid === 'parking' || $sid === 'directions')) continue;
+    $alt = ($i % 2 === 1) ? 'alt' : '';
+    if ($multi && $sid === 'parking')    { if ($anyPark) { echo sec_parking_multi($venues, $v, $alt); $i++; } continue; }
+    if ($multi && $sid === 'directions') { if ($anyDir)  { echo sec_directions_multi($venues, $v, $alt); $i++; } continue; }
     if (empty($RENDERERS[$sid]) || !section_nonempty($sid, $c)) continue;
-    echo $RENDERERS[$sid]($c, $v, ($i % 2 === 1) ? 'alt' : ''); $i++;
+    echo $RENDERERS[$sid]($c, $v, $alt); $i++;
 }
 ?>
 
@@ -779,6 +828,42 @@ foreach ($order as $sid) {
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
 })();
 </script>
+<?php if ($multi): ?>
+<script>
+(function(){
+  var VENUES = <?= json_encode(array_column(array_map(fn($x) => ['id' => $x['id'], 'name' => $x['name'] ?: 'Venue'], $venues), 'name', 'id'), JSON_UNESCAPED_UNICODE) ?>;
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.vs-chip'));
+  var panes = Array.prototype.slice.call(document.querySelectorAll('.venue-pane'));
+  var sections = Array.prototype.slice.call(document.querySelectorAll('.venue-section'));
+  var label = document.querySelector('.vs-venue');
+  if(!chips.length) return;
+
+  function apply(id){
+    panes.forEach(function(p){ p.hidden = (p.getAttribute('data-venue') !== id); });
+    // hide a venue-specific section entirely if the chosen venue has no pane in it
+    sections.forEach(function(s){
+      var has = s.querySelector('.venue-pane[data-venue="'+ (window.CSS && CSS.escape ? CSS.escape(id) : id) +'"]');
+      s.style.display = has ? '' : 'none';
+    });
+    if(label) label.textContent = VENUES[id] || '';
+  }
+  function select(chip){
+    chips.forEach(function(c){ var on = (c === chip); c.classList.toggle('on', on); c.setAttribute('aria-selected', on ? 'true' : 'false'); });
+    apply(chip.getAttribute('data-venue'));
+  }
+  chips.forEach(function(c){ c.addEventListener('click', function(){ select(c); }); });
+
+  // preselect from ?sport= if present, else the first chip
+  var want = (new URLSearchParams(location.search).get('sport') || '').trim().toLowerCase();
+  var start = chips[0];
+  if(want){
+    var m = chips.find(function(c){ return (c.getAttribute('data-sport') || '').toLowerCase() === want; });
+    if(m) start = m;
+  }
+  select(start);
+})();
+</script>
+<?php endif; ?>
 </body>
 </html>
 <?php
