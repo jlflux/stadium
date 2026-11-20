@@ -9,6 +9,7 @@ require __DIR__ . '/config.php';
 // ---- image helpers (use globals set once we know the school) ----
 function up_url(string $file): string { return ($GLOBALS['UPL_URL'] ?? 'uploads') . '/' . rawurlencode($file); }
 function up_has(string $file): bool   { return isset($GLOBALS['UPL_DIR']) && is_file($GLOBALS['UPL_DIR'] . '/' . $file); }
+function parking_img(): string { return $GLOBALS['PARKING_IMG'] ?? 'parking.jpg'; }
 function org_name(array $c): string {
     $o = trim($c['site']['org_name'] ?? '');
     return $o !== '' ? $o : trim($c['site']['school_name'] ?? '');
@@ -25,7 +26,7 @@ function section_nonempty(string $sid, array $c): bool {
             return !empty($c['contacts']) || !empty($c['admin_team']);
         case 'parking':
             $p = $c['parking'] ?? [];
-            return trim($p['lede'] ?? '') !== '' || !empty($p['cards']) || up_has('parking.jpg');
+            return trim($p['lede'] ?? '') !== '' || !empty($p['cards']) || up_has(parking_img());
         case 'policies':
             return !empty($c['policies']);
         case 'media':
@@ -140,9 +141,9 @@ function sec_parking($c, $v, $alt) {
           <?php endforeach; ?>
         </div>
         <?php endif; ?>
-        <?php if (up_has('parking.jpg')): ?>
+        <?php if (up_has(parking_img())): ?>
         <figure class="map-figure">
-          <img src="<?= h(up_url('parking.jpg')) ?>?v=<?= $v ?>" alt="Gameday parking map">
+          <img src="<?= h(up_url(parking_img())) ?>?v=<?= $v ?>" alt="Gameday parking map">
           <?php if (!empty($park['caption'])): ?><figcaption><?= h_rich($park['caption']) ?></figcaption><?php endif; ?>
         </figure>
         <?php endif; ?>
@@ -319,6 +320,93 @@ function sec_gallery($c, $v, $alt) {
     <?php return ob_get_clean();
 }
 
+// ---- multi-venue: "which sport?" finder ----
+function render_venue_finder(array $venues, string $alt): string {
+    ob_start(); ?>
+    <section class="<?= $alt ?>" id="venues">
+      <div class="section-inner">
+        <div class="kicker">Find Your Venue</div>
+        <h2>Which sport are you here for?</h2>
+        <p class="lede">Our teams play at more than one location. Tap your sport to jump to the right venue — address, parking, and directions.</p>
+        <div class="sport-chips">
+          <?php foreach ($venues as $vv): foreach (($vv['sports'] ?? []) as $sport): if (trim($sport) === '') continue; ?>
+            <a class="sport-chip" href="#venue-<?= h($vv['id']) ?>"><span class="sc-sport"><?= h($sport) ?></span><span class="sc-venue"><?= h($vv['name']) ?></span></a>
+          <?php endforeach; endforeach; ?>
+        </div>
+      </div>
+    </section>
+    <?php return ob_get_clean();
+}
+
+// ---- multi-venue: one block per venue (address, clock, directions, parking) ----
+function render_venue_block(array $vn, $v, string $alt): string {
+    $hasPark  = up_has($vn['parking_img']);
+    $hasMap   = trim($vn['map_query'] ?? '') !== '';
+    ob_start(); ?>
+    <section class="<?= $alt ?>" id="venue-<?= h($vn['id']) ?>">
+      <div class="section-inner">
+        <div class="kicker">Venue</div>
+        <h2><?= h_rich($vn['name']) ?></h2>
+        <?php if (!empty($vn['sports'])): ?>
+        <div class="venue-sports"><?php foreach ($vn['sports'] as $sp): if (trim($sp) === '') continue; ?><span><?= h($sp) ?></span><?php endforeach; ?></div>
+        <?php endif; ?>
+        <?php if (!empty($vn['address'])): ?>
+        <div class="venue-addr">📍 <?= h_rich($vn['address']) ?><?php if (!empty($vn['address_note'])): ?> <span class="note">· <?= h_rich($vn['address_note']) ?></span><?php endif; ?></div>
+        <?php endif; ?>
+        <?php if (!empty($vn['timeline']['stops'])): ?>
+        <div class="venue-clock">
+          <?php foreach ($vn['timeline']['stops'] as $stop): ?>
+          <div class="vc-item"><span class="vc-time"><?= h_rich($stop['time'] ?? '') ?></span><span class="vc-what"><?= h_rich($stop['what'] ?? '') ?></span></div>
+          <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+        <?php if (!empty($vn['directions']['routes']) || $hasMap): ?>
+        <div class="dir-grid">
+          <div class="dir-col">
+            <?php foreach (($vn['directions']['routes'] ?? []) as $route): ?>
+            <div class="dir-card">
+              <h3 class="display"><?= h_rich($route['title'] ?? '') ?></h3>
+              <ol><?php foreach (($route['steps'] ?? []) as $step): ?><li><?= h_rich($step) ?></li><?php endforeach; ?></ol>
+            </div>
+            <?php endforeach; ?>
+          </div>
+          <?php if ($hasMap): ?>
+          <div class="gmap">
+            <iframe title="Map of <?= h($vn['name']) ?>" src="https://www.google.com/maps?q=<?= rawurlencode($vn['map_query']) ?>&output=embed" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
+            <div class="gmap-foot">
+              <span><?= h_rich($vn['map_label'] ?: $vn['name']) ?></span>
+              <a href="https://www.google.com/maps/dir/?api=1&destination=<?= rawurlencode($vn['map_query']) ?>" target="_blank" rel="noopener">Get Directions →</a>
+            </div>
+          </div>
+          <?php endif; ?>
+        </div>
+        <?php endif; ?>
+        <?php if (!empty($vn['parking']['lede']) || !empty($vn['parking']['cards']) || $hasPark): ?>
+        <div class="venue-parking">
+          <?php if (!empty($vn['parking']['lede'])): ?><p class="lede" style="margin-top:28px"><?= h_rich($vn['parking']['lede']) ?></p><?php endif; ?>
+          <?php if (!empty($vn['parking']['cards'])): ?>
+          <div class="parking-grid">
+            <?php foreach ($vn['parking']['cards'] as $card): ?>
+            <div class="p-card">
+              <div class="p-head"><span class="dot"></span><?= h_rich($card['title'] ?? '') ?></div>
+              <ul><?php foreach (($card['items'] ?? []) as $item): ?><li><?= h_rich($item) ?></li><?php endforeach; ?></ul>
+            </div>
+            <?php endforeach; ?>
+          </div>
+          <?php endif; ?>
+          <?php if ($hasPark): ?>
+          <figure class="map-figure">
+            <img src="<?= h(up_url($vn['parking_img'])) ?>?v=<?= $v ?>" alt="Parking map for <?= h($vn['name']) ?>">
+            <?php if (!empty($vn['parking']['caption'])): ?><figcaption><?= h_rich($vn['parking']['caption']) ?></figcaption><?php endif; ?>
+          </figure>
+          <?php endif; ?>
+        </div>
+        <?php endif; ?>
+      </div>
+    </section>
+    <?php return ob_get_clean();
+}
+
 $RENDERERS = [
     'welcome' => 'sec_welcome', 'contacts' => 'sec_contacts', 'parking' => 'sec_parking',
     'policies' => 'sec_policies', 'media' => 'sec_media', 'tickets' => 'sec_tickets',
@@ -357,6 +445,25 @@ if (!school_exists($slug)) {
 $GLOBALS['UPL_URL'] = school_upload_url($slug);
 $GLOBALS['UPL_DIR'] = school_upload_dir($slug);
 $c = load_content($slug);
+
+// ---- venues ----
+$venues = school_venues($c);
+$multi  = count($venues) > 1;
+$primary = $venues[0];
+$GLOBALS['PARKING_IMG'] = $primary['parking_img'];
+if (!$multi) {
+    // single venue: fold its data back into $c so the classic renderers work unchanged
+    $c['parking']    = $primary['parking'];
+    $c['timeline']   = $primary['timeline'];
+    $c['directions'] = [
+        'lede' => $primary['directions']['lede'], 'routes' => $primary['directions']['routes'],
+        'map_query' => $primary['map_query'], 'map_label' => $primary['map_label'],
+    ];
+    $c['site']['address'] = $primary['address'];
+    $c['site']['address_note'] = $primary['address_note'];
+    if (empty($c['site']['hero_em'])) $c['site']['hero_em'] = $primary['name'];
+}
+
 $site = $c['site'] ?? []; $tl = $c['timeline'] ?? [];
 $foot = $c['footer'] ?? []; $school = $c['school'] ?? [];
 $org = org_name($c);
@@ -364,9 +471,13 @@ $v = @filemtime(school_data_file($slug)) ?: time();
 $TC = theme_colors($c);   // per-school brand colors
 $order = $c['section_order'] ?? ['welcome','contacts','parking','policies','media','tickets','directions','school','gallery'];
 
-// Nav: only sections that actually render.
+// Nav: venues first (multi only), then the shared sections that render.
 $nav = [];
+if ($multi) {
+    foreach ($venues as $vv) $nav['venue-' . $vv['id']] = $vv['name'] ?: 'Venue';
+}
 foreach ($order as $sid) {
+    if ($multi && ($sid === 'parking' || $sid === 'directions')) continue; // per-venue now
     if (!empty($NAV_LABELS[$sid]) && section_nonempty($sid, $c)) $nav[$sid] = $NAV_LABELS[$sid];
 }
 
@@ -526,6 +637,22 @@ a.ticket-band.is-link:hover{transform:translateY(-2px);box-shadow:0 10px 30px rg
 .gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
 .slot{aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:var(--card);border:1px solid #E3E0D7}
 .slot img{width:100%;height:100%;object-fit:cover;display:block}
+/* multi-venue finder + venue blocks */
+.sport-chips{display:flex;flex-wrap:wrap;gap:12px}
+.sport-chip{display:flex;flex-direction:column;gap:2px;background:var(--navy);color:#fff;text-decoration:none;border-radius:12px;padding:14px 20px;min-width:150px;border:1px solid rgba(255,255,255,.08);transition:transform .14s,background .14s}
+.sport-chip:hover{transform:translateY(-2px);background:var(--red)}
+.sport-chip .sc-sport{font-weight:800;font-size:16px}
+.sport-chip .sc-venue{font-size:12px;opacity:.72;font-weight:600}
+.sport-chip:hover .sc-venue{opacity:.9}
+.venue-sports{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.venue-sports span{background:#E6EDF5;color:var(--navy);font-weight:700;font-size:12.5px;padding:5px 12px;border-radius:999px;border:1px solid #D4DEEA}
+.venue-addr{display:inline-flex;align-items:center;gap:8px;background:var(--navy);color:#fff;border-radius:999px;padding:9px 18px;font-weight:600;font-size:14.5px;flex-wrap:wrap;margin-bottom:8px}
+.venue-addr .note{color:#FF9AA5;font-weight:700}
+.venue-clock{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0 6px}
+.vc-item{background:var(--card);border:1px solid #E3E0D7;border-left:4px solid var(--red);border-radius:10px;padding:10px 16px}
+.vc-time{display:block;font-weight:900;color:var(--navy);font-size:17px}
+.vc-what{display:block;color:#6B7488;font-size:12.5px;margin-top:2px}
+.venue-parking{margin-top:8px}
 footer{background:var(--navy-deep);color:#AEB9CF;padding:40px 20px 24px;border-top:4px solid var(--red)}
 .footer-inner{max-width:var(--max);margin:0 auto;display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;font-size:14px}
 .footer-inner strong{color:#fff;font-weight:900;text-transform:uppercase;display:block;margin-bottom:6px;letter-spacing:.06em}
@@ -574,14 +701,16 @@ footer a{color:#fff;text-decoration:underline}
       <?php if (!empty($site['eyebrow'])): ?><span class="eyebrow"><?= h_rich($site['eyebrow']) ?></span><?php endif; ?>
       <h1 class="display"><?= h_rich($site['hero_top'] ?? '') ?><br><em><?= h_rich($site['hero_em'] ?? '') ?></em></h1>
       <?php if (!empty($site['hero_sub'])): ?><p class="hero-sub"><?= h_rich($site['hero_sub']) ?></p><?php endif; ?>
-      <?php if (!empty($site['address'])): ?>
+      <?php if (!$multi && !empty($site['address'])): ?>
       <div class="hero-addr">📍 <?= h_rich($site['address']) ?> <?php if (!empty($site['address_note'])): ?><span class="note">· <?= h_rich($site['address_note']) ?></span><?php endif; ?></div>
+      <?php elseif ($multi): ?>
+      <div class="hero-addr">📍 Multiple venues — find yours below</div>
       <?php endif; ?>
     </div>
   </div>
 </header>
 
-<?php if (!empty($tl['stops'])): ?>
+<?php if (!$multi && !empty($tl['stops'])): ?>
 <div class="timeline" aria-label="Gameday timeline">
   <div class="timeline-inner">
     <?php if (!empty($tl['label'])): ?><div class="timeline-label"><?= h_rich($tl['label']) ?></div><?php endif; ?>
@@ -599,11 +728,14 @@ footer a{color:#fff;text-decoration:underline}
 
 <?php
 $i = 0;
+if ($multi) {
+    echo render_venue_finder($venues, ($i % 2 === 1) ? 'alt' : ''); $i++;
+    foreach ($venues as $vv) { echo render_venue_block($vv, $v, ($i % 2 === 1) ? 'alt' : ''); $i++; }
+}
 foreach ($order as $sid) {
+    if ($multi && ($sid === 'parking' || $sid === 'directions')) continue;
     if (empty($RENDERERS[$sid]) || !section_nonempty($sid, $c)) continue;
-    $alt = ($i % 2 === 1) ? 'alt' : '';
-    echo $RENDERERS[$sid]($c, $v, $alt);
-    $i++;
+    echo $RENDERERS[$sid]($c, $v, ($i % 2 === 1) ? 'alt' : ''); $i++;
 }
 ?>
 
@@ -613,7 +745,7 @@ foreach ($order as $sid) {
       <?php if (up_has('logo.png')): ?><img src="<?= h(up_url('logo.png')) ?>?v=<?= $v ?>" alt="" style="width:72px;flex-shrink:0"><?php endif; ?>
       <div>
         <strong><?= h($org !== '' ? $org . ' Athletics' : 'Athletics') ?></strong>
-        <?php if (!empty($site['hero_em'])): ?><?= h_rich($site['hero_em']) ?> · <?php endif; ?><?= h_rich($site['address'] ?? '') ?><br>
+<?= h_rich($site['hero_em'] ?? '') ?><?php if (!empty($site['address'])): ?> · <?= h_rich($site['address']) ?><?php endif; ?><br>
         <?php if (!empty($foot['office_phone'])): ?>School office: <a href="<?= h(tel_href($foot['office_phone'])) ?>"><?= h($foot['office_phone']) ?></a><?php endif; ?>
         <?php if (!empty($school['url'])): ?><br><a href="<?= h($school['url']) ?>" target="_blank" rel="noopener"><?= h($school['button_label'] ?: 'Athletics site') ?></a><?php endif; ?>
       </div>

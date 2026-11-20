@@ -227,10 +227,58 @@ function array_to_lines(array $arr): string {
 }
 
 // ------------------------------------------------------------
+//  Venues (a school can have several — e.g. a stadium off-campus
+//  plus the main-campus gyms/fields). Older single-venue schools
+//  have no 'venues' key; we synthesize one from the legacy
+//  top-level fields so they render exactly as before.
+// ------------------------------------------------------------
+function normalize_venue(array $v, int $i = 0): array {
+    $id = trim($v['id'] ?? '');
+    if ($id === '') $id = slugify($v['name'] ?? '') ?: ('venue' . $i);
+    return [
+        'id'           => $id,
+        'name'         => $v['name'] ?? '',
+        'sports'       => array_values($v['sports'] ?? []),
+        'address'      => $v['address'] ?? '',
+        'address_note' => $v['address_note'] ?? '',
+        'map_query'    => $v['map_query'] ?? '',
+        'map_label'    => $v['map_label'] ?? '',
+        'parking'      => ['lede' => $v['parking']['lede'] ?? '', 'cards' => $v['parking']['cards'] ?? [], 'caption' => $v['parking']['caption'] ?? ''],
+        'directions'   => ['lede' => $v['directions']['lede'] ?? '', 'routes' => $v['directions']['routes'] ?? []],
+        'timeline'     => ['label' => $v['timeline']['label'] ?? '', 'stops' => $v['timeline']['stops'] ?? []],
+        'parking_img'  => $v['parking_img'] ?? ($id === 'main' ? 'parking.jpg' : 'parking-' . $id . '.jpg'),
+    ];
+}
+function school_venues(array $c): array {
+    if (!empty($c['venues']) && is_array($c['venues'])) {
+        $out = [];
+        foreach (array_values($c['venues']) as $i => $v) {
+            if (is_array($v)) $out[] = normalize_venue($v, $i);
+        }
+        if ($out) return $out;
+    }
+    // legacy single venue from top-level fields
+    $s = $c['site'] ?? [];
+    return [normalize_venue([
+        'id'           => 'main',
+        'name'         => $s['hero_em'] ?? 'Main Venue',
+        'address'      => $s['address'] ?? '',
+        'address_note' => $s['address_note'] ?? '',
+        'map_query'    => $c['directions']['map_query'] ?? '',
+        'map_label'    => $c['directions']['map_label'] ?? '',
+        'parking'      => $c['parking'] ?? [],
+        'directions'   => $c['directions'] ?? [],
+        'timeline'     => $c['timeline'] ?? [],
+        'parking_img'  => 'parking.jpg',
+    ])];
+}
+
+// ------------------------------------------------------------
 //  Build the content array from posted admin-form fields.
 //  Pure transformation (no I/O) so it can be unit-tested.
 // ------------------------------------------------------------
 function apply_content_post(array $P, array $c): array {
+    // ---- school-level brand ----
     $c['site'] = [
         'school_name'  => trim($P['school_name'] ?? ''),
         'org_name'     => trim($P['org_name'] ?? ''),
@@ -239,17 +287,9 @@ function apply_content_post(array $P, array $c): array {
         'hero_top'     => trim($P['hero_top'] ?? ''),
         'hero_em'      => trim($P['hero_em'] ?? ''),
         'hero_sub'     => trim($P['hero_sub'] ?? ''),
-        'address'      => trim($P['address'] ?? ''),
-        'address_note' => trim($P['address_note'] ?? ''),
     ];
-    $c['timeline']['label'] = trim($P['tl_label'] ?? '');
-    $stops = [];
-    foreach (($P['tl_time'] ?? []) as $i => $time) {
-        $time = trim($time); $what = trim($P['tl_what'][$i] ?? '');
-        if ($time !== '' || $what !== '') $stops[] = ['time' => $time, 'what' => $what];
-    }
-    $c['timeline']['stops'] = $stops;
 
+    // ---- school-level shared sections ----
     $c['welcome'] = [
         'kicker' => trim($P['w_kicker'] ?? ''), 'heading' => trim($P['w_heading'] ?? ''),
         'p1' => trim($P['w_p1'] ?? ''), 'p2' => trim($P['w_p2'] ?? ''),
@@ -270,17 +310,6 @@ function apply_content_post(array $P, array $c): array {
     }
     $c['contacts'] = $contacts;
     $c['admin_team'] = lines_to_array($P['admin_team'] ?? '');
-
-    $c['parking']['lede'] = trim($P['park_lede'] ?? '');
-    $c['parking']['caption'] = trim($P['park_caption'] ?? '');
-    $pcards = [];
-    foreach (($P['park_title'] ?? []) as $i => $title) {
-        $title = trim($title);
-        $items = lines_to_array($P['park_items'][$i] ?? '');
-        if ($title === '' && !$items) continue;
-        $pcards[] = ['title' => $title, 'items' => $items];
-    }
-    $c['parking']['cards'] = $pcards;
 
     $pols = [];
     foreach (($P['pol_title'] ?? []) as $i => $title) {
@@ -335,18 +364,6 @@ function apply_content_post(array $P, array $c): array {
     foreach ($known as $k) if (!in_array($k, $ordered, true)) $ordered[] = $k;
     if ($ordered) $c['section_order'] = $ordered;
 
-    $c['directions']['lede'] = trim($P['dir_lede'] ?? '');
-    $c['directions']['map_query'] = trim($P['dir_map_query'] ?? '');
-    $c['directions']['map_label'] = trim($P['dir_map_label'] ?? '');
-    $routes = [];
-    foreach (($P['dir_title'] ?? []) as $i => $title) {
-        $title = trim($title);
-        $steps = lines_to_array($P['dir_steps'][$i] ?? '');
-        if ($title === '' && !$steps) continue;
-        $routes[] = ['title' => $title, 'steps' => $steps];
-    }
-    $c['directions']['routes'] = $routes;
-
     $c['gallery']['lede'] = trim($P['gal_lede'] ?? '');
     $c['footer'] = [
         'office_phone'  => trim($P['f_phone'] ?? ''),
@@ -354,10 +371,50 @@ function apply_content_post(array $P, array $c): array {
         'contact_email' => trim($P['f_email'] ?? ''),
     ];
 
-    // Brand colors (two per school; deep/bright shades are derived at render)
     $c['theme'] = [
         'primary' => norm_hex($P['theme_primary'] ?? '', '#101E3C'),
         'accent'  => norm_hex($P['theme_accent'] ?? '', '#B22234'),
     ];
+
+    // ---- venue-scoped fields: the editor edits one venue at a time ----
+    $venues = school_venues($c);
+    $vi = (int)($P['venue_index'] ?? 0);
+    if ($vi < 0 || $vi >= count($venues)) $vi = 0;
+
+    $stops = [];
+    foreach (($P['tl_time'] ?? []) as $i => $t) {
+        $t = trim($t); $w = trim($P['tl_what'][$i] ?? '');
+        if ($t !== '' || $w !== '') $stops[] = ['time' => $t, 'what' => $w];
+    }
+    $pcards = [];
+    foreach (($P['park_title'] ?? []) as $i => $t) {
+        $t = trim($t); $items = lines_to_array($P['park_items'][$i] ?? '');
+        if ($t === '' && !$items) continue;
+        $pcards[] = ['title' => $t, 'items' => $items];
+    }
+    $routes = [];
+    foreach (($P['dir_title'] ?? []) as $i => $t) {
+        $t = trim($t); $steps = lines_to_array($P['dir_steps'][$i] ?? '');
+        if ($t === '' && !$steps) continue;
+        $routes[] = ['title' => $t, 'steps' => $steps];
+    }
+    $venues[$vi]['name']         = trim($P['ven_name'] ?? ($venues[$vi]['name'] ?? ''));
+    $venues[$vi]['sports']       = array_values(array_filter(
+        array_map('trim', preg_split('/[\r\n,]+/', (string)($P['ven_sports'] ?? ''))),
+        fn($s) => $s !== ''
+    ));
+    $venues[$vi]['address']      = trim($P['address'] ?? '');
+    $venues[$vi]['address_note'] = trim($P['address_note'] ?? '');
+    $venues[$vi]['map_query']    = trim($P['dir_map_query'] ?? '');
+    $venues[$vi]['map_label']    = trim($P['dir_map_label'] ?? '');
+    $venues[$vi]['timeline']     = ['label' => trim($P['tl_label'] ?? ''), 'stops' => $stops];
+    $venues[$vi]['parking']      = ['lede' => trim($P['park_lede'] ?? ''), 'cards' => $pcards, 'caption' => trim($P['park_caption'] ?? '')];
+    $venues[$vi]['directions']   = ['lede' => trim($P['dir_lede'] ?? ''), 'routes' => $routes];
+    if (empty($venues[$vi]['id'])) $venues[$vi]['id'] = slugify($venues[$vi]['name']) ?: ('venue' . $vi);
+    if (empty($venues[$vi]['parking_img'])) $venues[$vi]['parking_img'] = ($venues[$vi]['id'] === 'main' ? 'parking.jpg' : 'parking-' . $venues[$vi]['id'] . '.jpg');
+    $c['venues'] = array_map(fn($v) => normalize_venue($v), $venues);
+
+    // legacy single-venue fields now live inside venues[]
+    unset($c['parking'], $c['directions'], $c['timeline'], $c['site']['address'], $c['site']['address_note']);
     return $c;
 }

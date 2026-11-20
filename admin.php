@@ -279,8 +279,12 @@ if ($logged_in && $_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['do_log
                 $c = apply_content_post($_POST, load_content($slug));
                 $msg = save_content($slug, $c) ? 'All changes saved. The site is updated.' : 'Could not write the content file — check that data/schools is writable.';
             } elseif (isset($_POST['save_images'])) {
+                $vens0 = school_venues(load_content($slug));
+                $vix0  = (int)($_POST['venue_index'] ?? 0);
+                if ($vix0 < 0 || $vix0 >= count($vens0)) $vix0 = 0;
+                $pimg0 = $vens0[$vix0]['parking_img'] ?: 'parking.jpg';
                 $done = [];
-                foreach (['logo' => 'logo.png', 'pat' => 'pat.png', 'hero' => 'hero.jpg', 'parking' => 'parking.jpg'] as $field => $fname) {
+                foreach (['logo' => 'logo.png', 'pat' => 'pat.png', 'hero' => 'hero.jpg', 'parking' => $pimg0] as $field => $fname) {
                     [$saved, $e] = handle_upload($field, $UPLDIR, $fname);
                     if ($e) { $err = $e; break; }
                     if ($saved) $done[] = $fname;
@@ -308,6 +312,30 @@ if ($logged_in && $_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['do_log
                         @unlink($UPLDIR . '/' . $photo);
                     }
                     $msg = 'Photo removed from the gallery.';
+                }
+            } elseif (isset($_POST['add_venue'])) {
+                $c = load_content($slug);
+                $vens = school_venues($c);
+                $vens[] = normalize_venue(
+                    ['name' => 'New Venue', 'id' => 'venue-' . substr(md5(uniqid('', true)), 0, 6)],
+                    count($vens)
+                );
+                $c['venues'] = array_values(array_map('normalize_venue', $vens, array_keys($vens)));
+                save_content($slug, $c);
+                $msg = 'Venue added — fill in its name, sports, and details below.';
+                $_GET['venue'] = (string)(count($c['venues']) - 1);
+            } elseif (isset($_POST['remove_venue'])) {
+                $c = load_content($slug);
+                $vens = school_venues($c);
+                $rix = (int)$_POST['remove_venue'];
+                if (count($vens) > 1 && isset($vens[$rix])) {
+                    array_splice($vens, $rix, 1);
+                    $c['venues'] = array_values(array_map('normalize_venue', $vens, array_keys($vens)));
+                    save_content($slug, $c);
+                    $msg = 'Venue removed.';
+                    $_GET['venue'] = (string)max(0, $rix - 1);
+                } else {
+                    $err = 'A school needs at least one venue.';
                 }
             }
         }
@@ -387,6 +415,17 @@ textarea{min-height:84px;resize:vertical}
 .feat-btn:hover{background:transparent;border-color:var(--accent);color:var(--accent)}
 .feat-btn.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .feat-btn.on:hover{background:#5BC6FF;color:var(--accent-ink)}
+.btn.linkish-danger{background:none;color:var(--danger);border:0;padding:6px 2px;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.btn.linkish-danger:hover{background:none;color:#FF7A7F}
+.venuebar .vtabs{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+.vtab{display:flex;flex-direction:column;gap:2px;min-width:140px;background:var(--panel2);border:1.5px solid var(--line);border-radius:11px;padding:11px 15px;text-decoration:none;color:var(--text);transition:border-color .12s,background .12s}
+.vtab:hover{border-color:var(--accent)}
+.vtab.on{border-color:var(--accent);background:rgba(56,182,255,.12)}
+.vtab .vt-name{font-weight:800;font-size:14.5px;color:#fff}
+.vtab.on .vt-name{color:var(--accent)}
+.vtab .vt-sports{font-size:11.5px;color:var(--muted);line-height:1.3}
+.vtab-add{display:flex;align-items:center}
+.vtab-add .btn{padding:11px 16px;border-style:dashed}
 .savebar{position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 30%);padding:16px 0 8px;text-align:right}
 .order-list{list-style:none;display:grid;gap:8px}
 .order-item{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 14px;cursor:default}
@@ -581,14 +620,54 @@ else:
         'directions' => 'Directions & Map', 'school' => 'Athletics Website',
         'gallery' => 'Photos',
     ];
+    $venues = school_venues($c);
+    $vi = isset($_GET['venue']) ? (int)$_GET['venue']
+        : (isset($_POST['venue_index']) ? (int)$_POST['venue_index'] : 0);
+    if ($vi < 0 || $vi >= count($venues)) $vi = 0;
+    $vn     = $venues[$vi];
+    $multi  = count($venues) > 1;
 ?>
   <h1>Edit the Guide</h1>
   <p class="sub">Editing <strong><?= h($c['site']['school_name'] ?? $editing_slug) ?></strong>. Change anything below and hit <strong>Save all changes</strong>. Images and gallery photos save instantly with their own buttons.</p>
+
+  <!-- ============ VENUES ============ -->
+  <fieldset id="venues" class="venuebar">
+    <legend>Venues</legend>
+    <p class="hint" style="margin:-4px 0 14px">
+      A venue is a place your teams host — a stadium, a gym, a field. Visitors pick their sport on your page and get <em>that</em> venue's address, gameday clock, parking, and directions.
+      <?php if ($multi): ?>You have <strong><?= count($venues) ?> venues</strong>. Pick one to edit it, and <strong>save before switching</strong> — unsaved changes don't carry over.<?php else: ?>Add a second venue if some sports play somewhere else (a separate stadium, a different campus).<?php endif; ?>
+    </p>
+    <div class="vtabs">
+      <?php foreach ($venues as $k => $ven):
+          $qs = ($role === 'master' ? 'edit=' . urlencode((string)$editing_slug) . '&amp;' : '') . 'venue=' . $k;
+          $sp = $ven['sports'] ?? []; ?>
+        <a class="vtab<?= $k === $vi ? ' on' : '' ?>" href="?<?= $qs ?>#venues">
+          <span class="vt-name"><?= h($ven['name'] ?: ('Venue ' . ($k + 1))) ?></span>
+          <?php if ($sp): ?><span class="vt-sports"><?= h(implode(' · ', array_slice($sp, 0, 3)) . (count($sp) > 3 ? ' +' . (count($sp) - 3) : '')) ?></span><?php endif; ?>
+        </a>
+      <?php endforeach; ?>
+      <form method="post" class="vtab-add">
+        <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>">
+        <input type="hidden" name="school" value="<?= h($editing_slug) ?>">
+        <button class="btn ghost" name="add_venue" value="1">+ Add a venue</button>
+      </form>
+    </div>
+    <?php if ($multi): ?>
+    <form method="post" style="margin-top:14px" onsubmit="return confirm('Remove the venue &quot;<?= h($vn['name'] ?: 'this venue') ?>&quot;? Visitors will no longer see it. This can\'t be undone.')">
+      <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>">
+      <input type="hidden" name="school" value="<?= h($editing_slug) ?>">
+      <button class="btn linkish-danger" name="remove_venue" value="<?= $vi ?>">Remove “<?= h($vn['name'] ?: 'this venue') ?>”</button>
+    </form>
+    <?php endif; ?>
+  </fieldset>
+
+  <p class="sub" style="margin:-8px 0 22px;font-size:13px">You're editing venue <strong style="color:var(--accent)"><?= h($vn['name'] ?: ('Venue ' . ($vi + 1))) ?></strong>. The venue name, sports, address, gameday clock, parking, and directions below all belong to it. Everything else (welcome letter, contacts, tickets, media, photos, colors) is shared across the whole school.</p>
 
   <!-- ============ IMAGES ============ -->
   <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>">
     <input type="hidden" name="school" value="<?= h($editing_slug) ?>">
+    <input type="hidden" name="venue_index" value="<?= $vi ?>">
     <fieldset>
       <legend>Site Images</legend>
       <div class="imgslots">
@@ -608,8 +687,8 @@ else:
           <input type="file" name="hero" accept="image/png,image/jpeg,image/webp">
         </div>
         <div class="imgslot">
-          <img src="<?= h($UPL) ?>/parking.jpg?v=<?= $v ?>" alt="Current parking diagram" onerror="this.style.visibility='hidden'">
-          <div class="name">Parking diagram</div>
+          <img src="<?= h($UPL) ?>/<?= h($vn['parking_img']) ?>?v=<?= $v ?>" alt="Current parking diagram" onerror="this.style.visibility='hidden'">
+          <div class="name">Parking diagram<?php if ($multi): ?> — <?= h($vn['name'] ?: ('Venue ' . ($vi + 1))) ?><?php endif; ?></div>
           <input type="file" name="parking" accept="image/png,image/jpeg,image/webp">
         </div>
       </div>
@@ -645,7 +724,19 @@ else:
   <form method="post" id="contentform">
     <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>">
     <input type="hidden" name="school" value="<?= h($editing_slug) ?>">
+    <input type="hidden" name="venue_index" value="<?= $vi ?>">
     <input type="hidden" name="section_order" id="section_order" value="<?= h(implode(',', $c['section_order'] ?? [])) ?>">
+
+    <fieldset style="border-color:rgba(56,182,255,.45)">
+      <legend>This Venue<?php if ($multi): ?> · <?= h($vn['name'] ?: ('Venue ' . ($vi + 1))) ?><?php endif; ?></legend>
+      <div class="grid2">
+        <div><label>Venue name</label><input type="text" name="ven_name" value="<?= h($vn['name'] ?? '') ?>" placeholder="e.g. Waldrop Stadium"></div>
+        <div><label>Sports played here <span style="text-transform:none;font-weight:500;color:var(--muted)">(comma-separated)</span></label><input type="text" name="ven_sports" value="<?= h(implode(', ', $vn['sports'] ?? [])) ?>" placeholder="Football, Flag Football, Track &amp; Field, Soccer"></div>
+        <div><label>Address</label><input type="text" name="address" value="<?= h($vn['address'] ?? '') ?>"></div>
+        <div><label>Address note <span style="text-transform:none;font-weight:500;color:var(--muted)">(small text after address)</span></label><input type="text" name="address_note" value="<?= h($vn['address_note'] ?? '') ?>"></div>
+      </div>
+      <p class="hint">When a school has more than one venue, the sports here become the "Which sport are you here for?" buttons that send visitors to this venue. With a single venue, sports are optional and no picker shows.</p>
+    </fieldset>
 
     <fieldset>
       <legend>Page Section Order</legend>
@@ -675,8 +766,6 @@ else:
         <div><label>Red badge text (hero)</label><input type="text" name="eyebrow" value="<?= h($c['site']['eyebrow'] ?? '') ?>"></div>
         <div><label>Headline line 1</label><input type="text" name="hero_top" value="<?= h($c['site']['hero_top'] ?? '') ?>"></div>
         <div><label>Headline line 2 (red) — your stadium name</label><input type="text" name="hero_em" value="<?= h($c['site']['hero_em'] ?? '') ?>"></div>
-        <div><label>Stadium address</label><input type="text" name="address" value="<?= h($c['site']['address'] ?? '') ?>"></div>
-        <div><label>Address note (small text after address)</label><input type="text" name="address_note" value="<?= h($c['site']['address_note'] ?? '') ?>"></div>
       </div>
       <label>Hero subtitle</label><textarea name="hero_sub"><?= h($c['site']['hero_sub'] ?? '') ?></textarea>
     </fieldset>
@@ -704,10 +793,10 @@ else:
     </fieldset>
 
     <fieldset>
-      <legend>Gameday Clock</legend>
-      <label>Strip label</label><input type="text" name="tl_label" value="<?= h($c['timeline']['label'] ?? '') ?>">
+      <legend>Gameday Clock<?php if ($multi): ?> · <?= h($vn['name'] ?: ('Venue ' . ($vi + 1))) ?><?php endif; ?></legend>
+      <label>Strip label</label><input type="text" name="tl_label" value="<?= h($vn['timeline']['label'] ?? '') ?>">
       <?php
-        $stops = $c['timeline']['stops'] ?? [];
+        $stops = $vn['timeline']['stops'] ?? [];
         if (count($stops) < 3) $stops[] = ['time'=>'','what'=>''];
         foreach ($stops as $i => $stop): ?>
       <div class="grid2" style="margin-top:10px">
@@ -753,11 +842,11 @@ else:
     </fieldset>
 
     <fieldset>
-      <legend>Arrival &amp; Parking</legend>
-      <label>Intro sentence</label><textarea name="park_lede"><?= h($c['parking']['lede'] ?? '') ?></textarea>
+      <legend>Arrival &amp; Parking<?php if ($multi): ?> · <?= h($vn['name'] ?: ('Venue ' . ($vi + 1))) ?><?php endif; ?></legend>
+      <label>Intro sentence</label><textarea name="park_lede"><?= h($vn['parking']['lede'] ?? '') ?></textarea>
       <div class="grid3">
         <?php
-          $pcards = $c['parking']['cards'] ?? [];
+          $pcards = $vn['parking']['cards'] ?? [];
           $pcards[] = ['title'=>'','items'=>[]];
           foreach ($pcards as $card): ?>
         <div>
@@ -767,7 +856,7 @@ else:
         </div>
         <?php endforeach; ?>
       </div>
-      <label>Parking diagram caption</label><textarea name="park_caption" rows="2"><?= h($c['parking']['caption'] ?? '') ?></textarea>
+      <label>Parking diagram caption</label><textarea name="park_caption" rows="2"><?= h($vn['parking']['caption'] ?? '') ?></textarea>
       <p class="hint">You can use &lt;strong&gt;bold&lt;/strong&gt; inside bullets, e.g. &lt;strong&gt;Recommended:&lt;/strong&gt;</p>
     </fieldset>
 
@@ -807,11 +896,11 @@ else:
     </fieldset>
 
     <fieldset>
-      <legend>Directions &amp; Map</legend>
-      <label>Intro sentence</label><textarea name="dir_lede" rows="2"><?= h($c['directions']['lede'] ?? '') ?></textarea>
+      <legend>Directions &amp; Map<?php if ($multi): ?> · <?= h($vn['name'] ?: ('Venue ' . ($vi + 1))) ?><?php endif; ?></legend>
+      <label>Intro sentence</label><textarea name="dir_lede" rows="2"><?= h($vn['directions']['lede'] ?? '') ?></textarea>
       <div class="grid2">
         <?php
-          $routes = $c['directions']['routes'] ?? [];
+          $routes = $vn['directions']['routes'] ?? [];
           $routes[] = ['title'=>'','steps'=>[]];
           foreach ($routes as $route): ?>
         <div>
@@ -824,10 +913,10 @@ else:
       <div class="grid2">
         <div>
           <label>Google Maps search</label>
-          <input type="text" name="dir_map_query" value="<?= h($c['directions']['map_query'] ?? '') ?>">
-          <p class="hint">What the embedded map pins — usually the stadium name and address.</p>
+          <input type="text" name="dir_map_query" value="<?= h($vn['map_query'] ?? '') ?>">
+          <p class="hint">What the embedded map pins — usually the venue name and address.</p>
         </div>
-        <div><label>Label under the map</label><input type="text" name="dir_map_label" value="<?= h($c['directions']['map_label'] ?? '') ?>"></div>
+        <div><label>Label under the map</label><input type="text" name="dir_map_label" value="<?= h($vn['map_label'] ?? '') ?>"></div>
       </div>
     </fieldset>
 
