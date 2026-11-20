@@ -30,6 +30,46 @@ if (isset($_POST['do_login'])) {
     $err = 'Incorrect username or password.';
 }
 
+// ---------- public self-serve signup (from the landing page) ----------
+if (isset($_POST['do_signup'])) {
+    $fail = function ($m) { $_SESSION['signup_err'] = $m; header('Location: ' . BASE_URL . '/?signup=1#signup'); exit; };
+    if (!SIGNUP_ENABLED) $fail('Sign-ups are currently closed.');
+    if (empty($_SESSION['csrf']) || !isset($_POST['csrf']) || !hash_equals($_SESSION['csrf'], (string)$_POST['csrf'])) $fail('Your session expired — please try again.');
+    if (trim($_POST['website'] ?? '') !== '') $fail('Something went wrong.'); // honeypot
+    $name  = trim($_POST['su_name'] ?? '');
+    $slug  = slugify($_POST['su_slug'] ?? '') ?: slugify($name);
+    $email = trim($_POST['su_email'] ?? '');
+    $uname = $slug;
+    $pass  = (string)($_POST['su_password'] ?? '');
+    if ($name === '')            $fail('Enter your school name.');
+    if (!valid_slug($slug))      $fail('Pick a web address using lowercase letters, numbers, and hyphens.');
+    if (school_exists($slug))    $fail('That web address is already taken — try another.');
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) $fail('Enter a valid email address.');
+    if (find_user($uname))       $fail('That name is already taken — try another web address.');
+    if (strlen($pass) < 6)       $fail('Password must be at least 6 characters.');
+
+    $tmpl = default_template();
+    $tmpl['site']['school_name'] = $name;
+    if (!save_content($slug, $tmpl)) $fail('Could not create your guide — please try again.');
+    @mkdir(school_upload_dir($slug), 0775, true);
+    $users = load_users();
+    $users = upsert_user($users, [
+        'username'      => $uname,
+        'password_hash' => password_hash($pass, PASSWORD_DEFAULT),
+        'role'          => 'school',
+        'slug'          => $slug,
+        'email'         => $email,
+    ]);
+    save_users($users);
+
+    session_regenerate_id(true);
+    $_SESSION['user'] = ['username' => $uname, 'role' => 'school', 'slug' => $slug];
+    $_SESSION['csrf'] = bin2hex(random_bytes(16));
+    unset($_SESSION['signup_err']);
+    header('Location: ' . BASE_URL . '/admin.php?welcome=1');
+    exit;
+}
+
 $user      = $_SESSION['user'] ?? null;
 $logged_in = (bool)$user;
 $role      = $user['role'] ?? '';
@@ -264,6 +304,7 @@ if ($logged_in && $_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['do_log
 
 // one-time flash messages via query (after redirects)
 if (isset($_GET['created'])) $msg = 'School created. You\'re now editing it below.';
+if (isset($_GET['welcome'])) $msg = 'Welcome to ' . PLATFORM_NAME . '! Your guide is live — fill it in below, then set your brand colors. Your username is your web address.';
 if (isset($_GET['deleted'])) $msg = 'Deleted "' . $_GET['deleted'] . '".';
 
 // ---------- decide the view ----------
@@ -289,84 +330,90 @@ $v = $editing_slug ? (@filemtime(school_data_file($editing_slug)) ?: time()) : t
 <link rel="icon" type="image/png" sizes="32x32" href="<?= BASE_URL ?>/assets/favicon-32.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-:root{--navy:#101E3C;--navy-deep:#0A1428;--red:#B22234;--chalk:#F7F5F0;--card:#fff;--ink:#1B2437;--line:#D8D4C8}
+:root{--bg:#121316;--panel:#1A1D22;--panel2:#15171B;--line:#2A2F37;--text:#E7EAEF;--muted:#98A2B0;--accent:#38B6FF;--accent-ink:#06121D;--danger:#FF5C62}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',system-ui,sans-serif;background:var(--chalk);color:var(--ink);line-height:1.55}
-.bar{position:sticky;top:0;z-index:40;background:var(--navy-deep);color:#fff;border-bottom:3px solid var(--red)}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55}
+a{color:var(--accent)}
+.bar{position:sticky;top:0;z-index:40;background:#0C0D0F;color:#fff;border-bottom:3px solid var(--accent)}
 .bar-inner{max-width:960px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .bar strong{font-weight:900;text-transform:uppercase;letter-spacing:.05em;font-size:15px}
-.bar .pill{background:var(--red);color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
-.bar a{color:#C9D2E4;text-decoration:none;font-size:13px;font-weight:600}
+.bar .pill{background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.bar a{color:#AEB6C2;text-decoration:none;font-size:13px;font-weight:600}
 .bar a:hover{color:#fff}
 .bar .right{margin-left:auto;display:flex;gap:16px;align-items:center}
 main{max-width:960px;margin:0 auto;padding:26px 20px 80px}
-h1{font-weight:900;text-transform:uppercase;font-size:24px;color:var(--navy);margin-bottom:4px}
-.sub{color:#6B7488;font-size:14px;margin-bottom:22px}
+h1{font-weight:900;text-transform:uppercase;font-size:24px;color:#fff;margin-bottom:4px}
+.sub{color:var(--muted);font-size:14px;margin-bottom:22px}
 .flash{border-radius:10px;padding:12px 16px;font-weight:600;font-size:14px;margin-bottom:18px}
-.flash.ok{background:#E2F2E5;color:#1C6B33;border:1px solid #BEDFC6}
-.flash.bad{background:#FBE7E9;color:#8E1A29;border:1px solid #F2C6CB}
-fieldset{border:1px solid var(--line);background:var(--card);border-radius:14px;padding:20px 22px;margin-bottom:22px}
-legend{font-weight:900;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--red);padding:0 8px}
-label{display:block;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#5A6478;margin:14px 0 4px}
+.flash.ok{background:rgba(56,182,255,.12);color:#9ED8FF;border:1px solid rgba(56,182,255,.35)}
+.flash.bad{background:rgba(255,92,98,.12);color:#FFB0B3;border:1px solid rgba(255,92,98,.4)}
+fieldset{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:20px 22px;margin-bottom:22px}
+legend{font-weight:900;text-transform:uppercase;font-size:13px;letter-spacing:.1em;color:var(--accent);padding:0 8px}
+label{display:block;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:14px 0 4px}
 label:first-of-type{margin-top:0}
-input[type=text],input[type=email],input[type=password],textarea{width:100%;border:1px solid #CCC8BB;border-radius:8px;padding:9px 12px;font:inherit;font-size:14.5px;background:#FCFBF8}
-input:focus,textarea:focus{outline:2px solid var(--navy);border-color:var(--navy)}
+input[type=text],input[type=email],input[type=password],textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;font:inherit;font-size:14.5px;background:var(--panel2);color:var(--text)}
+input::placeholder,textarea::placeholder{color:#5C6673}
+input:focus,textarea:focus{outline:2px solid var(--accent);border-color:var(--accent)}
 textarea{min-height:84px;resize:vertical}
-.hint{font-size:12.5px;color:#8A93A6;margin-top:4px}
+.hint{font-size:12.5px;color:#7A8492;margin-top:4px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 16px}
 @media(max-width:680px){.grid2,.grid3{grid-template-columns:1fr}}
-.row{display:grid;grid-template-columns:1.1fr 1.1fr 1fr 1.4fr auto;gap:8px;align-items:end;padding:10px;border:1px solid #EFECE2;border-radius:10px;margin-bottom:8px;background:#FCFBF8}
+.row{display:grid;grid-template-columns:1.1fr 1.1fr 1fr 1.4fr auto;gap:8px;align-items:end;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--panel2)}
 .row label{margin:0 0 3px;font-size:11px}
-.row .rm{background:none;border:1px solid #CCC8BB;color:#8E1A29;border-radius:8px;width:34px;height:38px;font-size:16px;cursor:pointer}
-.row .rm:hover{background:#FBE7E9}
+.row .rm{background:none;border:1px solid var(--line);color:var(--danger);border-radius:8px;width:34px;height:38px;font-size:16px;cursor:pointer}
+.row .rm:hover{background:rgba(255,92,98,.14)}
 @media(max-width:820px){.row{grid-template-columns:1fr 1fr;grid-auto-rows:auto}.row .rm{width:100%}}
-.btn{display:inline-block;background:var(--navy);color:#fff;border:0;border-radius:9px;padding:11px 20px;font:inherit;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none}
-.btn:hover{background:#1A2C55}
-.btn.red{background:var(--red)}.btn.red:hover{background:#8E1A29}
-.btn.ghost{background:none;color:var(--navy);border:1.5px solid var(--navy)}
-.btn.ghost:hover{background:#EDEAE2}
+.btn{display:inline-block;background:#262B33;color:#fff;border:0;border-radius:9px;padding:11px 20px;font:inherit;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none}
+.btn:hover{background:#30363F}
+.btn.red{background:var(--accent);color:var(--accent-ink)}.btn.red:hover{background:#5BC6FF}
+.btn.ghost{background:none;color:var(--accent);border:1.5px solid var(--accent)}
+.btn.ghost:hover{background:rgba(56,182,255,.1)}
+.btn.danger{background:var(--danger);color:#1A0506}.btn.danger:hover{background:#FF7A7F}
 .btn.sm{padding:7px 13px;font-size:12.5px}
-.savebar{position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--chalk) 30%);padding:16px 0 8px;text-align:right}
+.savebar{position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 30%);padding:16px 0 8px;text-align:right}
 .order-list{list-style:none;display:grid;gap:8px}
-.order-item{display:flex;align-items:center;gap:12px;background:#FCFBF8;border:1px solid #E3E0D7;border-radius:10px;padding:11px 14px;cursor:default}
-.order-item.dragging{opacity:.5;border-color:var(--navy)}
-.order-item.dragover{border-color:var(--red);box-shadow:0 0 0 2px rgba(178,34,52,.2)}
-.drag-handle{cursor:grab;color:#9AA2B1;font-size:18px;line-height:1;user-select:none;flex-shrink:0}
+.order-item{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 14px;cursor:default}
+.order-item.dragging{opacity:.5;border-color:var(--accent)}
+.order-item.dragover{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56,182,255,.25)}
+.drag-handle{cursor:grab;color:#6B7280;font-size:18px;line-height:1;user-select:none;flex-shrink:0}
 .drag-handle:active{cursor:grabbing}
-.order-name{font-weight:700;color:var(--navy);flex:1}
+.order-name{font-weight:700;color:var(--text);flex:1}
 .order-btns{display:flex;gap:4px}
-.order-btns button{width:34px;height:32px;border:1px solid #CCC8BB;background:#fff;border-radius:7px;font-size:15px;cursor:pointer;color:var(--navy)}
-.order-btns button:hover{background:#EDEAE2}
-code{background:#EDEAE2;padding:1px 6px;border-radius:4px;font-size:12.5px}
+.order-btns button{width:34px;height:32px;border:1px solid var(--line);background:#20242B;border-radius:7px;font-size:15px;cursor:pointer;color:var(--text)}
+.order-btns button:hover{background:#2A2F37}
+code{background:#20242B;color:#CBD2DB;padding:1px 6px;border-radius:4px;font-size:12.5px}
 .colorrow{display:flex;gap:10px;align-items:center}
-.colorrow input[type=color]{width:46px;height:40px;border:1px solid #CCC8BB;border-radius:8px;background:#fff;padding:2px;cursor:pointer;flex-shrink:0}
+.colorrow input[type=color]{width:46px;height:40px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:2px;cursor:pointer;flex-shrink:0}
 .colorrow input[type=text]{flex:1}
 .imgslots{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
-.imgslot{border:1px solid #EFECE2;border-radius:10px;padding:12px;background:#FCFBF8;text-align:center}
-.imgslot img{max-width:100%;height:110px;object-fit:contain;display:block;margin:0 auto 8px;background:#fff;border-radius:6px}
-.imgslot .name{font-weight:700;font-size:13px;margin-bottom:6px}
-.imgslot input[type=file]{font-size:12px;width:100%}
+.imgslot{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel2);text-align:center}
+.imgslot img{max-width:100%;height:110px;object-fit:contain;display:block;margin:0 auto 8px;background:#EEF1F4;border-radius:6px}
+.imgslot .name{font-weight:700;font-size:13px;margin-bottom:6px;color:var(--text)}
+.imgslot input[type=file]{font-size:12px;width:100%;color:var(--muted)}
 .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:12px}
-.gal .g{border:1px solid #EFECE2;border-radius:10px;overflow:hidden;background:#fff}
+.gal .g{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel2)}
 .gal img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
-.gal button{width:100%;border:0;background:#FBE7E9;color:#8E1A29;font:inherit;font-size:12.5px;font-weight:700;padding:7px;cursor:pointer}
-.gal button:hover{background:#F2C6CB}
-.login-box{max-width:380px;margin:80px auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:30px;border-top:5px solid var(--red)}
+.gal button{width:100%;border:0;background:rgba(255,92,98,.14);color:#FFB0B3;font:inherit;font-size:12.5px;font-weight:700;padding:7px;cursor:pointer}
+.gal button:hover{background:rgba(255,92,98,.26)}
+.login-box{max-width:380px;margin:80px auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:30px;border-top:5px solid var(--accent)}
 .login-box h1{margin-bottom:14px}
-/* master dashboard */
+.login-brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.login-brand img{width:30px;height:34px}
+.login-brand span{font-weight:900;font-size:20px;color:#fff;letter-spacing:-.01em}
+.login-brand span i{color:var(--accent);font-style:normal}
 .school-table{width:100%;border-collapse:collapse;margin-top:6px}
-.school-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8A93A6;padding:6px 10px;border-bottom:2px solid #EFECE2}
-.school-table td{padding:10px;border-bottom:1px solid #F0EDE4;font-size:14px;vertical-align:middle}
-.school-table .nm{font-weight:800;color:var(--navy)}
-.school-table .sl{color:#8A93A6;font-size:12.5px}
+.school-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:6px 10px;border-bottom:2px solid var(--line)}
+.school-table td{padding:10px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle}
+.school-table .nm{font-weight:800;color:#fff}
+.school-table .sl{color:var(--muted);font-size:12.5px}
 .school-table .acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.danger{border-color:#F2C6CB!important;background:#FFF7F8}
-.danger legend{color:#8E1A29}
-details.mgr{border:1px solid #EFECE2;border-radius:10px;padding:0;margin-bottom:10px;background:#FCFBF8}
-details.mgr>summary{cursor:pointer;padding:12px 14px;font-weight:700;color:var(--navy);font-size:14px;list-style:none}
+.danger{border-color:rgba(255,92,98,.4)!important;background:rgba(255,92,98,.06)}
+.danger legend{color:var(--danger)}
+details.mgr{border:1px solid var(--line);border-radius:10px;padding:0;margin-bottom:10px;background:var(--panel2)}
+details.mgr>summary{cursor:pointer;padding:12px 14px;font-weight:700;color:var(--text);font-size:14px;list-style:none}
 details.mgr>summary::-webkit-details-marker{display:none}
-details.mgr>summary:hover{color:var(--red)}
+details.mgr>summary:hover{color:var(--accent)}
 details.mgr .body{padding:0 14px 14px}
 </style>
 </head>
@@ -375,6 +422,7 @@ details.mgr .body{padding:0 14px 14px}
 <?php if (!$logged_in): ?>
 <main>
   <div class="login-box">
+    <div class="login-brand"><img src="<?= BASE_URL ?>/assets/venuelink-mark.svg" alt=""><span>Venue<i>Link</i></span></div>
     <h1>Admin Sign-In</h1>
     <?php if ($err): ?><div class="flash bad"><?= h($err) ?></div><?php endif; ?>
     <form method="post">
@@ -478,7 +526,7 @@ if ($role === 'master' && !$editing_slug):
           <label style="color:#8E1A29">Delete this school — type <code><?= h($sl) ?></code> to confirm</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <input type="text" name="confirm_slug" placeholder="<?= h($sl) ?>" style="max-width:220px">
-            <button class="btn red sm" name="delete_school" value="1">Delete</button>
+            <button class="btn danger sm" name="delete_school" value="1">Delete</button>
           </div>
         </form>
       </div>

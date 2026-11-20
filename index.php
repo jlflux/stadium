@@ -698,7 +698,23 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--chalk);color:var(
 .lx-cta h2{font-weight:900;text-transform:uppercase;font-size:clamp(20px,3vw,28px);margin-bottom:8px}
 .lx-cta p{color:#C9D2E4;max-width:520px;margin:0 auto 18px}
 .lx-cta a{display:inline-block;background:var(--red);color:#fff;text-decoration:none;font-weight:800;padding:13px 26px;border-radius:10px}
+.lx-cta a{color:#06121D}
 .lx-cta a:hover{background:var(--red-bright)}
+.lx-hero-btn{display:inline-block;margin-top:24px;background:var(--red);color:#06121D!important;text-decoration:none;font-weight:800;font-size:16px;padding:14px 28px;border-radius:11px;transition:background .15s}
+.lx-hero-btn:hover{background:var(--red-bright)}
+.su-form{max-width:640px;margin:0 auto;text-align:left}
+.su-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;margin-bottom:16px}
+.su-form label{display:block;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#AEB6C2}
+.su-form input{width:100%;margin-top:6px;border:1px solid #2E333B;background:#0E0F12;color:#fff;border-radius:9px;padding:11px 13px;font:inherit;font-size:15px}
+.su-form input::placeholder{color:#5C6673}
+.su-form input:focus{outline:2px solid var(--red);border-color:var(--red)}
+.su-url{display:block;font-size:12px;color:#8A93A6;font-weight:600;text-transform:none;letter-spacing:0;margin-top:5px;overflow-wrap:anywhere}
+.su-hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
+.su-btn{background:var(--red);color:#06121D;border:0;border-radius:11px;padding:14px 28px;font:inherit;font-weight:800;font-size:15px;cursor:pointer}
+.su-btn:hover{background:var(--red-bright)}
+.su-fine{color:#8A93A6;font-size:12.5px;margin-top:12px}
+.su-err{background:rgba(255,92,98,.16);color:#FFB3B6;border:1px solid rgba(255,92,98,.45);border-radius:10px;padding:10px 14px;font-size:14px;margin:0 auto 16px;max-width:640px}
+@media(max-width:560px){.su-grid{grid-template-columns:1fr}}
 .lx-foot{background:var(--navy-deep);color:#8A93A6;text-align:center;padding:26px 20px;font-size:13px}
 a:focus-visible{outline:3px solid var(--red);outline-offset:2px}
 </style>
@@ -708,6 +724,10 @@ a:focus-visible{outline:3px solid var(--red);outline-offset:2px}
 }
 
 function render_landing(): void {
+    if (session_status() !== PHP_SESSION_ACTIVE) @session_start();
+    if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(16));
+    $csrf = $_SESSION['csrf'];
+    $signup_err = $_SESSION['signup_err'] ?? ''; unset($_SESSION['signup_err']);
     $schools = list_schools();
     echo render_shell_head(PLATFORM_NAME);
     ?>
@@ -719,6 +739,7 @@ function render_landing(): void {
       <span class="eyebrow"><?= h(PLATFORM_NAME) ?></span>
       <h1 class="display">Clean, mobile-friendly <em>gameday guides</em> for visiting teams</h1>
       <p>Everything a visiting team, band, and fans need — contacts, parking, directions, tickets, and more — on one simple page per school.</p>
+      <?php if (SIGNUP_ENABLED): ?><a href="#signup" class="lx-hero-btn">Create your school's guide →</a><?php endif; ?>
     </div>
     <div class="lx-wrap">
       <div class="lx-kicker">Schools</div>
@@ -740,13 +761,51 @@ function render_landing(): void {
       <div class="lx-empty">No schools yet. Sign in to the <a href="<?= h(BASE_URL . '/admin.php') ?>">admin</a> to add the first one.</div>
       <?php endif; ?>
 
-      <div class="lx-cta">
-        <h2>Want a Gameday Guide for your school?</h2>
-        <p>Each guide takes minutes to set up and works on every phone. Reach out to get yours.</p>
-        <a href="mailto:hello@example.com?subject=Gameday%20Guide">Get your guide</a>
+      <?php if (SIGNUP_ENABLED): ?>
+      <div class="lx-cta" id="signup">
+        <h2>Create your school's guide</h2>
+        <p>Free to set up, works on every phone, and ready in about a minute.</p>
+        <?php if ($signup_err): ?><div class="su-err"><?= h($signup_err) ?></div><?php endif; ?>
+        <form method="post" action="<?= h(BASE_URL) ?>/admin.php" class="su-form" autocomplete="off">
+          <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
+          <input type="text" name="website" class="su-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <div class="su-grid">
+            <label>School name
+              <input type="text" name="su_name" id="su_name" required maxlength="80" placeholder="Vestavia Hills High School">
+            </label>
+            <label>Web address
+              <input type="text" name="su_slug" id="su_slug" maxlength="40" placeholder="vestavia">
+              <span class="su-url"><?= h(rtrim(BASE_URL, '/')) ?>/<span id="su_prev">your-school</span></span>
+            </label>
+            <label>Your email
+              <input type="email" name="su_email" required placeholder="you@school.org">
+            </label>
+            <label>Choose a password
+              <input type="password" name="su_password" required minlength="6" placeholder="at least 6 characters">
+            </label>
+          </div>
+          <button class="su-btn" name="do_signup" value="1">Create my guide →</button>
+          <p class="su-fine">You'll go straight to your editor. Your login username is your web address — change your password anytime.</p>
+        </form>
       </div>
+      <?php else: ?>
+      <div class="lx-cta">
+        <h2>Want a guide for your school?</h2>
+        <p>Get in touch and we'll set yours up.</p>
+        <a href="mailto:hello@venuelink.io?subject=VenueLink%20Guide">Get your guide</a>
+      </div>
+      <?php endif; ?>
     </div>
     <div class="lx-foot"><?= h(PLATFORM_NAME) ?></div>
+    <script>
+    (function(){
+      var name=document.getElementById('su_name'), slug=document.getElementById('su_slug'), prev=document.getElementById('su_prev');
+      if(!prev) return;
+      function sl(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');}
+      function upd(){ prev.textContent = (slug.value?sl(slug.value):(name&&name.value?sl(name.value):'your-school')) || 'your-school'; }
+      if(name) name.addEventListener('input',upd); slug.addEventListener('input',upd); upd();
+    })();
+    </script>
     </body></html>
     <?php
 }

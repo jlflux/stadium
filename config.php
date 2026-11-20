@@ -10,6 +10,9 @@
 
 // ---- Platform settings -------------------------------------
 define('PLATFORM_NAME', 'VenueLink');
+// Let schools create their own guide from the landing page. Set false to
+// close public sign-ups (master admin can still create schools).
+define('SIGNUP_ENABLED', true);
 // Subtle growth link shown at the bottom of every public school page.
 define('GROWTH_TEXT', 'Want a Gameday Guide like this for your school?');
 define('GROWTH_URL',  '');   // blank => link to the landing page
