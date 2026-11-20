@@ -9,7 +9,7 @@
 // ------------------------------------------------------------
 
 // ---- Platform settings -------------------------------------
-define('PLATFORM_NAME', 'Gameday Guides');
+define('PLATFORM_NAME', 'VenueLink');
 // Subtle growth link shown at the bottom of every public school page.
 define('GROWTH_TEXT', 'Want a Gameday Guide like this for your school?');
 define('GROWTH_URL',  '');   // blank => link to the landing page

@@ -285,6 +285,8 @@ $v = $editing_slug ? (@filemtime(school_data_file($editing_slug)) ?: time()) : t
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin · <?= h(PLATFORM_NAME) ?></title>
 <meta name="robots" content="noindex">
+<link rel="icon" href="<?= BASE_URL ?>/assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="<?= BASE_URL ?>/assets/favicon-32.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 :root{--navy:#101E3C;--navy-deep:#0A1428;--red:#B22234;--chalk:#F7F5F0;--card:#fff;--ink:#1B2437;--line:#D8D4C8}

@@ -379,6 +379,9 @@ $has_hero   = up_has('hero.jpg');
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= h($page_title !== '' ? $page_title : 'Visiting Team Guide') ?></title>
+<link rel="icon" href="<?= BASE_URL ?>/assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="<?= BASE_URL ?>/assets/favicon-32.png">
+<link rel="apple-touch-icon" href="<?= BASE_URL ?>/assets/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -658,6 +661,9 @@ function render_shell_head(string $title): string {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= h($title) ?></title>
+<link rel="icon" href="<?= BASE_URL ?>/assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="<?= BASE_URL ?>/assets/favicon-32.png">
+<link rel="apple-touch-icon" href="<?= BASE_URL ?>/assets/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -668,9 +674,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--chalk);color:var(
 .display{font-weight:900;text-transform:uppercase;letter-spacing:.02em}
 .lx-top{background:var(--navy-deep);border-bottom:3px solid var(--red);padding:14px 20px}
 .lx-top-in{max-width:var(--max);margin:0 auto;display:flex;align-items:center;gap:12px}
-.lx-badge{width:40px;height:40px;border-radius:9px;background:var(--red);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:20px}
-.lx-top strong{color:#fff;font-weight:900;text-transform:uppercase;letter-spacing:.05em;font-size:15px}
+.lx-logo-mark{width:30px;height:34px;display:block;flex-shrink:0}
+.lx-brand{color:#fff;font-weight:900;font-size:19px;letter-spacing:-.01em}
+.lx-brand span{color:var(--red)}
 .lx-hero{background:var(--navy);color:#fff;padding:72px 20px 64px;text-align:center}
+.lx-hero-mark{display:block;margin:0 auto 18px}
 .lx-hero .eyebrow{display:inline-block;background:var(--red);color:#fff;font-weight:900;text-transform:uppercase;font-size:12px;letter-spacing:.14em;padding:6px 14px;border-radius:4px;margin-bottom:18px}
 .lx-hero h1{font-size:clamp(34px,6vw,60px);line-height:1.03;max-width:760px;margin:0 auto}
 .lx-hero h1 em{font-style:normal;color:var(--red-bright)}
@@ -704,9 +712,10 @@ function render_landing(): void {
     echo render_shell_head(PLATFORM_NAME);
     ?>
     <div class="lx-top"><div class="lx-top-in">
-      <div class="lx-badge">G</div><strong><?= h(PLATFORM_NAME) ?></strong>
+      <img class="lx-logo-mark" src="<?= BASE_URL ?>/assets/venuelink-mark.svg" alt=""><strong class="lx-brand">Venue<span>Link</span></strong>
     </div></div>
     <div class="lx-hero">
+      <img class="lx-hero-mark" src="<?= BASE_URL ?>/assets/venuelink-mark.svg" alt="" width="66" height="72">
       <span class="eyebrow"><?= h(PLATFORM_NAME) ?></span>
       <h1 class="display">Clean, mobile-friendly <em>gameday guides</em> for visiting teams</h1>
       <p>Everything a visiting team, band, and fans need — contacts, parking, directions, tickets, and more — on one simple page per school.</p>
@@ -746,7 +755,7 @@ function render_not_found(string $slug): void {
     echo render_shell_head('Not found · ' . PLATFORM_NAME);
     ?>
     <div class="lx-top"><div class="lx-top-in">
-      <div class="lx-badge">G</div><strong><?= h(PLATFORM_NAME) ?></strong>
+      <img class="lx-logo-mark" src="<?= BASE_URL ?>/assets/venuelink-mark.svg" alt=""><strong class="lx-brand">Venue<span>Link</span></strong>
     </div></div>
     <div class="lx-hero">
       <span class="eyebrow">404</span>
