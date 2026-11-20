@@ -410,23 +410,33 @@ function sec_directions_multi(array $venues, $v, string $alt): string {
     <?php return ob_get_clean();
 }
 
-// ---- multi-venue gameday clock (one swappable pane per venue) ----
-function multi_clock(array $venues): string {
+// ---- multi-venue quick info: venue name + address + gameday clock,
+//      swapping together with the chosen sport, right under the picker ----
+function venue_quickinfo(array $venues): string {
     ob_start(); ?>
-    <div class="timeline venue-section" aria-label="Gameday timeline">
+    <div class="venue-quick venue-section" aria-label="Venue quick info">
       <?php foreach ($venues as $k => $vn):
-          $tl = $vn['timeline'] ?? [];
-          if (empty($tl['stops'])) continue; ?>
-      <div class="timeline-inner venue-pane" data-venue="<?= h($vn['id']) ?>"<?= $k === 0 ? '' : ' hidden' ?>>
-        <?php if (!empty($tl['label'])): ?><div class="timeline-label"><?= h_rich($tl['label']) ?></div><?php endif; ?>
-        <div class="tl-track">
-          <?php foreach ($tl['stops'] as $stop): ?>
-          <div class="tl-stop">
-            <div class="tl-time display"><?= h_rich($stop['time'] ?? '') ?></div>
-            <div class="tl-what"><?= h_rich($stop['what'] ?? '') ?></div>
-          </div>
-          <?php endforeach; ?>
+          $tl = $vn['timeline'] ?? []; ?>
+      <div class="vq-inner venue-pane" data-venue="<?= h($vn['id']) ?>"<?= $k === 0 ? '' : ' hidden' ?>>
+        <div class="vq-head">
+          <div class="vq-name"><?= h_rich($vn['name'] ?: 'Venue') ?></div>
+          <?php if (!empty($vn['address'])): ?>
+          <div class="vq-addr">📍 <?= h_rich($vn['address']) ?><?php if (!empty($vn['address_note'])): ?> <span class="note">· <?= h_rich($vn['address_note']) ?></span><?php endif; ?></div>
+          <?php endif; ?>
         </div>
+        <?php if (!empty($tl['stops'])): ?>
+        <div class="vq-clock">
+          <?php if (!empty($tl['label'])): ?><div class="timeline-label"><?= h_rich($tl['label']) ?></div><?php endif; ?>
+          <div class="tl-track">
+            <?php foreach ($tl['stops'] as $stop): ?>
+            <div class="tl-stop">
+              <div class="tl-time display"><?= h_rich($stop['time'] ?? '') ?></div>
+              <div class="tl-what"><?= h_rich($stop['what'] ?? '') ?></div>
+            </div>
+            <?php endforeach; ?>
+          </div>
+        </div>
+        <?php endif; ?>
       </div>
       <?php endforeach; ?>
     </div>
@@ -685,6 +695,14 @@ a.ticket-band.is-link:hover{transform:translateY(-2px);box-shadow:0 10px 30px rg
 .vs-at .vs-venue{color:#fff}
 .pane-venue{font-weight:900;text-transform:uppercase;letter-spacing:.06em;font-size:13px;color:var(--red);margin-bottom:14px}
 @media(max-width:640px){.vs-at{margin-left:0;width:100%}}
+/* multi-venue quick-info band (name + address + clock, under the picker) */
+.venue-quick{background:var(--navy-deep);padding:24px 20px 32px}
+.vq-inner{max-width:var(--max);margin:0 auto}
+.vq-head{display:flex;align-items:baseline;gap:8px 16px;flex-wrap:wrap;margin-bottom:18px}
+.vq-name{color:#fff;font-weight:900;text-transform:uppercase;letter-spacing:.04em;font-size:20px}
+.vq-addr{color:#AEB9CF;font-size:14px;font-weight:600}
+.vq-addr .note{color:#FF9AA5;font-weight:700}
+.vq-clock .timeline-label{margin-bottom:12px}
 footer{background:var(--navy-deep);color:#AEB9CF;padding:40px 20px 24px;border-top:4px solid var(--red)}
 .footer-inner{max-width:var(--max);margin:0 auto;display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;font-size:14px}
 .footer-inner strong{color:#fff;font-weight:900;text-transform:uppercase;display:block;margin-bottom:6px;letter-spacing:.06em}
@@ -731,13 +749,11 @@ footer a{color:#fff;text-decoration:underline}
   <div class="hero-content">
     <div class="hero-content-inner">
       <?php if (!empty($site['eyebrow'])): ?><span class="eyebrow"><?= h_rich($site['eyebrow']) ?></span><?php endif; ?>
-      <h1 class="display"><?= h_rich($site['hero_top'] ?? '') ?><br><?php if ($multi): foreach ($venues as $k => $vn): ?><em class="venue-pane" data-venue="<?= h($vn['id']) ?>"<?= $k === 0 ? '' : ' hidden' ?>><?= h_rich($vn['name'] ?: ($site['hero_em'] ?? '')) ?></em><?php endforeach; else: ?><em><?= h_rich($site['hero_em'] ?? '') ?></em><?php endif; ?></h1>
+      <h1 class="display"><?= h_rich($site['hero_top'] ?? '') ?><br><em><?= h_rich($multi ? ($org !== '' ? $org : ($site['hero_em'] ?? '')) : ($site['hero_em'] ?? '')) ?></em></h1>
       <?php if (!empty($site['hero_sub'])): ?><p class="hero-sub"><?= h_rich($site['hero_sub']) ?></p><?php endif; ?>
       <?php if (!$multi && !empty($site['address'])): ?>
       <div class="hero-addr">📍 <?= h_rich($site['address']) ?> <?php if (!empty($site['address_note'])): ?><span class="note">· <?= h_rich($site['address_note']) ?></span><?php endif; ?></div>
-      <?php elseif ($multi): foreach ($venues as $k => $vn): if (empty($vn['address'])) continue; ?>
-      <div class="hero-addr venue-pane" data-venue="<?= h($vn['id']) ?>"<?= $k === 0 ? '' : ' hidden' ?>>📍 <span class="ha-venue"><?= h_rich($vn['name']) ?></span> · <?= h_rich($vn['address']) ?><?php if (!empty($vn['address_note'])): ?> <span class="note">· <?= h_rich($vn['address_note']) ?></span><?php endif; ?></div>
-      <?php endforeach; endif; ?>
+      <?php endif; ?>
     </div>
   </div>
 </header>
@@ -759,9 +775,9 @@ footer a{color:#fff;text-decoration:underline}
 </div>
 <?php endif; ?>
 
-<?php if ($multi && $anyClock): ?>
-<?= multi_clock($venues) ?>
-<?php elseif (!$multi && !empty($tl['stops'])): ?>
+<?php if ($multi): ?>
+<?= venue_quickinfo($venues) ?>
+<?php elseif (!empty($tl['stops'])): ?>
 <div class="timeline" aria-label="Gameday timeline">
   <div class="timeline-inner">
     <?php if (!empty($tl['label'])): ?><div class="timeline-label"><?= h_rich($tl['label']) ?></div><?php endif; ?>
